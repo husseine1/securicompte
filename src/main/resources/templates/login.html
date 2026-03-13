@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion | Securicompte</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { background: linear-gradient(135deg, #1e3a5f 0%, #2980b9 100%); min-height: 100vh; }
+        .login-card { border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .brand-icon { font-size: 3rem; color: #2980b9; }
+    </style>
+</head>
+<body class="d-flex align-items-center justify-content-center">
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-5 col-lg-4">
+            <div class="card login-card border-0">
+                <div class="card-body p-5">
+                    <div class="text-center mb-4">
+                        <div class="brand-icon mb-3"><i class="fas fa-shield-halved"></i></div>
+                        <h2 class="fw-bold text-dark">Securicompte</h2>
+                        <p class="text-muted">Gestion des impayés</p>
+                    </div>
+                    <div th:if="${param.error}" class="alert alert-danger py-2 small">
+                        <i class="fas fa-exclamation-circle me-1"></i>
+                        Identifiants incorrects. Veuillez réessayer.
+                    </div>
+                    <div th:if="${param.logout}" class="alert alert-info py-2 small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Vous avez été déconnecté avec succès.
+                    </div>
+                    <form th:action="@{/login}" method="post">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold text-muted small">IDENTIFIANT</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0">
+                                    <i class="fas fa-user text-muted"></i>
+                                </span>
+                                <input type="text" name="username" class="form-control border-start-0 ps-0"
+                                       placeholder="Nom d'utilisateur" required autofocus>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold text-muted small">MOT DE PASSE</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0">
+                                    <i class="fas fa-lock text-muted"></i>
+                                </span>
+                                <input type="password" name="password" class="form-control border-start-0 ps-0"
+                                       placeholder="Mot de passe" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">
+                            <i class="fas fa-sign-in-alt me-2"></i>Se connecter
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

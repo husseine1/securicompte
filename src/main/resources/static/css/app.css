@@ -1,0 +1,56 @@
+/* ============================================
+   SECURICOMPTE - Styles personnalisés
+   ============================================ */
+
+:root {
+    --primary: #2563eb;
+    --danger: #dc2626;
+    --success: #16a34a;
+}
+
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+
+/* Navbar */
+.navbar-brand { letter-spacing: 0.5px; }
+.navbar .nav-link { opacity: 0.85; transition: opacity 0.2s; }
+.navbar .nav-link:hover { opacity: 1; }
+
+/* Cards */
+.card { transition: transform 0.15s, box-shadow 0.15s; }
+.card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important; }
+
+/* Upload zone */
+.upload-zone {
+    border-color: #d1d5db !important;
+    border-style: dashed !important;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--primary) !important;
+    background: #eff6ff;
+}
+
+/* Tables */
+.table th { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.table-hover tbody tr:hover { background-color: #f8fafc; }
+
+/* Badges */
+.badge { font-weight: 500; letter-spacing: 0.3px; }
+
+/* Pagination */
+.page-link { color: var(--primary); }
+.page-item.active .page-link { background-color: var(--primary); border-color: var(--primary); }
+
+/* Loading spinner */
+.spinner-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.4); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }

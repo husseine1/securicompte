@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Tableau de bord - Securicompte</title></head>
+<body>
+<section>
+
+  <!-- Stats Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card stat-card">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#dbeafe"><i class="fas fa-users" style="color:#1d4ed8"></i></div>
+          <div>
+            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Total Clients</div>
+            <div class="fs-3 fw-bold" th:text="${stats?.totalClients ?: 0}">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card stat-card">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#fee2e2"><i class="fas fa-exclamation-triangle" style="color:#dc2626"></i></div>
+          <div>
+            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Impayés actifs</div>
+            <div class="fs-3 fw-bold text-danger" th:text="${stats?.totalImpayes ?: 0}">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card stat-card">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#dcfce7"><i class="fas fa-file-import" style="color:#16a34a"></i></div>
+          <div>
+            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Fichiers importés</div>
+            <div class="fs-3 fw-bold" th:text="${stats?.totalImportsFaits ?: 0}">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card stat-card">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#fef9c3"><i class="fas fa-user-times" style="color:#ca8a04"></i></div>
+          <div>
+            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Clients impayés</div>
+            <div class="fs-3 fw-bold text-warning" th:text="${stats?.totalClientsAvecImpayes ?: 0}">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Graphique impayés par mois -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar me-2 text-primary"></i>Évolution des impayés par mois</h6>
+        </div>
+        <div class="card-body"><canvas id="impayesChart" height="90"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Impayés par agence -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-building me-2 text-warning"></i>Top agences impayées</h6>
+        </div>
+        <div class="card-body p-0">
+          <div th:if="${stats?.statsParAgence != null and !stats.statsParAgence.empty}"
+               class="list-group list-group-flush">
+            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3"
+                 th:each="s : ${stats.statsParAgence}">
+              <span class="text-truncate me-2" style="font-size:13px" th:text="${s.agence ?: 'N/A'}"></span>
+              <span class="badge bg-danger rounded-pill" th:text="${s.nbImpayes}"></span>
+            </div>
+          </div>
+          <div th:if="${stats?.statsParAgence == null or stats.statsParAgence.empty}"
+               class="text-center py-4 text-muted">
+            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>Aucune donnée
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Derniers imports -->
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2 text-info"></i>Derniers imports</h6>
+          <a th:href="@{/import}" class="btn btn-sm btn-outline-primary">Voir tout</a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Fichier</th><th>Période</th><th>Stock</th><th>Statut</th><th>Date import</th></tr></thead>
+            <tbody>
+              <tr th:each="imp : ${stats?.derniersImports}">
+                <td class="text-truncate" style="max-width:200px" th:text="${imp.nomFichier}"></td>
+                <td><span class="badge bg-secondary" th:text="${imp.mois + '/' + imp.annee}"></span></td>
+                <td th:text="${imp.nbStock}"></td>
+                <td>
+                  <span class="badge"
+                        th:classappend="${imp.statut == 'SUCCES'} ? 'bg-success' : (${imp.statut == 'ECHEC'} ? 'bg-danger' : 'bg-warning')"
+                        th:text="${imp.statut}"></span>
+                </td>
+                <td style="font-size:12px"
+                    th:text="${imp.dateImport != null ? #temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm') : '-'}"></td>
+              </tr>
+              <tr th:if="${stats?.derniersImports == null or stats.derniersImports.empty}">
+                <td colspan="5" class="text-center text-muted py-3">
+                  <i class="fas fa-inbox me-1"></i>Aucun import — <a th:href="@{/import}">Importer maintenant</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script th:inline="javascript">
+  /*<![CDATA[*/
+  const statsParMois = /*[[${stats?.statsParMois}]]*/ [];
+  if (statsParMois && statsParMois.length > 0) {
+    const labels = statsParMois.map(s => {
+      const m = ["","Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+      return m[s.mois] + " " + s.annee;
+    });
+    new Chart(document.getElementById("impayesChart"), {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Impayés",
+          data: statsParMois.map(s => s.nbImpayes),
+          backgroundColor: "rgba(220,53,69,.7)",
+          borderColor: "#dc3545",
+          borderWidth: 1, borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      }
+    });
+  } else {
+    document.getElementById("impayesChart").parentElement.innerHTML =
+      '<div class="text-center text-muted py-4"><i class="fas fa-chart-bar fa-3x mb-2 d-block"></i>Aucune donnée à afficher</div>';
+  }
+  /*]]>*/
+  </script>
+</section>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PGPASSWORD=postgres psql -U postgres -c \"\\\\l\")",
+      "Bash(mvn spring-boot:run)",
+      "Bash(PGPASSWORD=postgres psql -U postgres -d securicompte_db -c \"SELECT username, password FROM users;\")",
+      "Bash(PGPASSWORD=postgres psql -U postgres -d securicompte_db << 'EOF':*)",
+      "Bash(cmd //c \"taskkill /PID 186544 /F\")"
+    ]
+  }
+}

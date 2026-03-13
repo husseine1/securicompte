@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Gestion des utilisateurs - Securicompte</title></head>
+<body>
+<section>
+
+  <!-- Alertes flash -->
+  <div th:if="${succes}" class="alert alert-success alert-dismissible fade show">
+    <i class="fas fa-check-circle me-2"></i><span th:text="${succes}"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  <div th:if="${erreur}" class="alert alert-danger alert-dismissible fade show">
+    <i class="fas fa-exclamation-circle me-2"></i><span th:text="${erreur}"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- Formulaire création utilisateur -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-user-plus me-2 text-primary"></i>Nouvel utilisateur</h6>
+        </div>
+        <div class="card-body">
+          <form th:action="@{/admin/utilisateurs/creer}" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px">IDENTIFIANT</label>
+              <input type="text" class="form-control" name="username" required placeholder="login">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px">NOM COMPLET</label>
+              <input type="text" class="form-control" name="nomComplet" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px">EMAIL</label>
+              <input type="email" class="form-control" name="email">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px">MOT DE PASSE</label>
+              <input type="password" class="form-control" name="password" required minlength="6">
+            </div>
+            <div class="mb-4">
+              <label class="form-label fw-semibold" style="font-size:12px">RÔLE</label>
+              <select class="form-select" name="roleId" required>
+                <option th:each="r : ${roles}" th:value="${r.id}" th:text="${r.name}"></option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">
+              <i class="fas fa-plus me-1"></i>Créer l'utilisateur
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Outil recalcul impayés -->
+      <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-tools me-2 text-warning"></i>Outils système</h6>
+        </div>
+        <div class="card-body">
+          <p class="text-muted" style="font-size:13px">
+            Recalcule tous les impayés depuis le début. À utiliser avec précaution.
+          </p>
+          <form th:action="@{/admin/recalculer-impayes}" method="post"
+                onsubmit="return confirm('Confirmer le recalcul complet de tous les impayés ?')">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <button type="submit" class="btn btn-warning w-100">
+              <i class="fas fa-sync-alt me-1"></i>Recalculer les impayés
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Liste des utilisateurs -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold">
+            <i class="fas fa-users me-2 text-secondary"></i>
+            Utilisateurs
+            <span class="badge bg-secondary ms-1" th:text="${users.size()}"></span>
+          </h6>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Identifiant</th>
+                <th>Nom complet</th>
+                <th>Email</th>
+                <th>Rôle</th>
+                <th>Statut</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="u : ${users}">
+                <td class="fw-semibold" th:text="${u.username}"></td>
+                <td th:text="${u.nomComplet}"></td>
+                <td style="font-size:12px" th:text="${u.email ?: '-'}"></td>
+                <td>
+                  <span class="badge"
+                        th:classappend="${u.role != null and u.role.name == 'ROLE_ADMIN'} ? 'bg-danger' :
+                                        (${u.role != null and u.role.name == 'ROLE_AGENT'} ? 'bg-primary' : 'bg-secondary')"
+                        th:text="${u.role != null ? u.role.name.replace('ROLE_','') : '-'}">
+                  </span>
+                </td>
+                <td>
+                  <span th:if="${u.actif}" class="badge bg-success">Actif</span>
+                  <span th:unless="${u.actif}" class="badge bg-danger">Inactif</span>
+                </td>
+                <td>
+                  <div class="d-flex gap-1">
+                    <!-- Toggle actif/inactif -->
+                    <form th:action="@{/admin/utilisateurs/{id}/toggle(id=${u.id})}" method="post" class="d-inline">
+                      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                      <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                              th:title="${u.actif ? 'Désactiver' : 'Activer'}">
+                        <i th:classappend="${u.actif ? 'fas fa-ban' : 'fas fa-check'}"></i>
+                      </button>
+                    </form>
+                    <!-- Réinitialiser mdp -->
+                    <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2"
+                            data-bs-toggle="modal"
+                            th:attr="data-bs-target='#mdpModal' + ${u.id}"
+                            title="Réinitialiser le mot de passe">
+                      <i class="fas fa-key"></i>
+                    </button>
+                    <!-- Supprimer -->
+                    <form th:action="@{/admin/utilisateurs/{id}/supprimer(id=${u.id})}" method="post" class="d-inline"
+                          th:onsubmit="|return confirm('Supprimer l\'utilisateur ${u.username} ?')|">
+                      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                      <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals réinitialisation MDP -->
+  <th:block th:each="u : ${users}">
+    <div class="modal fade" th:id="|mdpModal${u.id}|" tabindex="-1">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title">Réinitialiser MDP — <span th:text="${u.username}"></span></h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form th:action="@{/admin/utilisateurs/{id}/reinitialiser-mdp(id=${u.id})}" method="post">
+            <div class="modal-body">
+              <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+              <label class="form-label">Nouveau mot de passe</label>
+              <input type="password" class="form-control" name="nouveauMdp" required minlength="6">
+            </div>
+            <div class="modal-footer">
+              <button type="submit" class="btn btn-warning btn-sm">Valider</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </th:block>
+
+</section>
+</body>
+</html>

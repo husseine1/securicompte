@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:fragment="layout(title, content)">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:replace="${title}">Securicompte</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --sc-primary:#1a3a5c; --sc-accent:#e8b800; }
+        body { background:#f0f4f8; font-family:'Segoe UI',sans-serif; }
+
+        /* Sidebar */
+        .sidebar { width:260px; min-height:100vh; background:var(--sc-primary); position:fixed; top:0; left:0; z-index:100; box-shadow:2px 0 10px rgba(0,0,0,.3); }
+        .sidebar-brand { padding:20px; background:rgba(0,0,0,.2); border-bottom:2px solid var(--sc-accent); }
+        .sidebar-brand h5 { color:var(--sc-accent); font-weight:800; letter-spacing:1px; margin:0; }
+        .sidebar-brand small { color:rgba(255,255,255,.6); font-size:11px; }
+        .sidebar .nav-link { color:rgba(255,255,255,.8); padding:12px 20px; transition:all .2s; font-size:14px; border-left:3px solid transparent; }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active { background:rgba(255,255,255,.15); color:#fff; border-left-color:var(--sc-accent); }
+        .sidebar .nav-link i { width:22px; margin-right:8px; }
+        .nav-section-title { color:rgba(255,255,255,.4); font-size:10px; text-transform:uppercase; letter-spacing:1.5px; padding:14px 20px 4px; }
+
+        /* Main */
+        .main-content { margin-left:260px; min-height:100vh; }
+        .topbar { background:#fff; padding:12px 24px; border-bottom:1px solid #dee2e6; box-shadow:0 1px 4px rgba(0,0,0,.08); display:flex; align-items:center; justify-content:space-between; }
+        .page-body { padding:24px; }
+
+        /* Cards */
+        .stat-card { border:none; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); transition:transform .2s; }
+        .stat-card:hover { transform:translateY(-2px); }
+        .stat-card .icon-wrap { width:52px; height:52px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+
+        /* Badges statut */
+        .badge-impaye    { background:#dc3545; color:#fff; }
+        .badge-regularise{ background:#198754; color:#fff; }
+        .badge-litige    { background:#fd7e14; color:#fff; }
+
+        /* Table */
+        .table th { background:#f8f9fa; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+        .btn-primary { background:var(--sc-primary); border-color:var(--sc-primary); }
+        .btn-primary:hover { background:#2a4f7c; border-color:#2a4f7c; }
+        .pagination .page-link { color:var(--sc-primary); }
+        .pagination .page-item.active .page-link { background:var(--sc-primary); border-color:var(--sc-primary); }
+    </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar d-flex flex-column">
+    <div class="sidebar-brand">
+        <h5><i class="fas fa-shield-alt me-2"></i>SECURICOMPTE</h5>
+        <small>Gestion des impayés</small>
+    </div>
+    <ul class="nav flex-column mt-2">
+        <li class="nav-section-title">PRINCIPAL</li>
+        <li class="nav-item">
+            <a class="nav-link" th:classappend="${requestURI == '/dashboard'} ? 'active'"
+               th:href="@{/dashboard}">
+                <i class="fas fa-tachometer-alt"></i>Tableau de bord
+            </a>
+        </li>
+        <li class="nav-section-title">GESTION</li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/import')} ? 'active'"
+               th:href="@{/import}">
+                <i class="fas fa-file-upload"></i>Import fichiers
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/clients')} ? 'active'"
+               th:href="@{/clients/recherche}">
+                <i class="fas fa-users"></i>Clients
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/impayes')} ? 'active'"
+               th:href="@{/impayes}">
+                <i class="fas fa-exclamation-triangle"></i>Impayés
+            </a>
+        </li>
+        <li class="nav-section-title">OUTILS</li>
+        <li class="nav-item">
+            <a class="nav-link" th:href="@{/impayes/export}">
+                <i class="fas fa-file-excel"></i>Export Excel
+            </a>
+        </li>
+        <li class="nav-section-title" sec:authorize="hasRole('ROLE_ADMIN')">ADMINISTRATION</li>
+        <li class="nav-item" sec:authorize="hasRole('ROLE_ADMIN')">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/admin')} ? 'active'"
+               th:href="@{/admin/utilisateurs}">
+                <i class="fas fa-user-cog"></i>Utilisateurs
+            </a>
+        </li>
+    </ul>
+    <div class="mt-auto p-3" style="border-top:1px solid rgba(255,255,255,.1)">
+        <div class="d-flex align-items-center">
+            <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center me-2"
+                 style="width:36px;height:36px;color:#fff">
+                <i class="fas fa-user" style="font-size:14px"></i>
+            </div>
+            <div>
+                <div style="color:#fff;font-size:13px;font-weight:600" sec:authentication="name">User</div>
+                <div style="color:rgba(255,255,255,.5);font-size:11px">
+                    <span sec:authorize="hasRole('ROLE_ADMIN')">Administrateur</span>
+                    <span sec:authorize="hasRole('ROLE_AGENT')">Agent</span>
+                    <span sec:authorize="hasRole('ROLE_CONSULTATION')">Consultation</span>
+                </div>
+            </div>
+            <a th:href="@{/logout}" class="ms-auto" style="color:rgba(255,255,255,.5)" title="Déconnexion">
+                <i class="fas fa-sign-out-alt"></i>
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Main content -->
+<div class="main-content">
+    <div class="topbar">
+        <div th:replace="${title}">Page Title</div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="badge bg-primary">
+                <i class="fas fa-calendar me-1"></i>
+                <span th:text="${#temporals.format(#temporals.createNow(),'dd/MM/yyyy')}"></span>
+            </span>
+            <a th:href="@{/logout}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-sign-out-alt me-1"></i>Déconnexion
+            </a>
+        </div>
+    </div>
+
+    <!-- Flash messages -->
+    <div class="page-body pb-0">
+        <div th:if="${succes}" class="alert alert-success alert-dismissible fade show">
+            <i class="fas fa-check-circle me-2"></i><span th:text="${succes}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${erreur}" class="alert alert-danger alert-dismissible fade show">
+            <i class="fas fa-exclamation-circle me-2"></i><span th:text="${erreur}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${successMessage}" class="alert alert-success alert-dismissible fade show">
+            <i class="fas fa-check-circle me-2"></i><span th:text="${successMessage}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <div th:if="${errorMessage}" class="alert alert-danger alert-dismissible fade show">
+            <i class="fas fa-exclamation-circle me-2"></i><span th:text="${errorMessage}"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+
+    <div class="page-body" th:replace="${content}">Content</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</body>
+</html>

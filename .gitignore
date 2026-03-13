@@ -1,0 +1,85 @@
+# ===================================================
+# .gitignore - Securicompte
+# ===================================================
+
+# Maven
+target/
+.m2/
+*.jar
+*.war
+*.ear
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+.flattened-pom.xml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+*.iws
+*.ipr
+
+# Java
+*.class
+*.log
+*.ctxt
+.classpath
+.project
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Build
+build/
+.gradle/
+.gradletasknamecache
+
+# Application
+uploads/
+.env
+.env.local
+*.properties.local
+
+# Database
+*.db
+*.sqlite
+postgres_data/
+securicompte_data/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node (si frontend)
+node_modules/
+dist/
+npm-debug.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp

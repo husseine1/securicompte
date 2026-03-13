@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Détail import - Securicompte</title></head>
+<body>
+<section>
+    <div class="mb-3"><a th:href="@{/import}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour</a></div>
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-file-excel me-2 text-success"></i>Détail de l'import</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6"><strong>Fichier:</strong> <span th:text="${importFichier.nomFichier}"></span></div>
+                <div class="col-md-3"><strong>Période:</strong>
+                    <span class="badge bg-primary" th:text="${importFichier.mois + '/' + importFichier.annee}"></span>
+                </div>
+                <div class="col-md-3"><strong>Statut:</strong>
+                    <span class="badge"
+                          th:classappend="${importFichier.statut.name() == 'SUCCES'} ? 'bg-success' : (${importFichier.statut.name() == 'ECHEC'} ? 'bg-danger' : 'bg-warning')"
+                          th:text="${importFichier.statut}"></span>
+                </div>
+                <div class="col-md-4"><strong>Nouvelles souscriptions:</strong> <span th:text="${importFichier.nbNouvelles}"></span></div>
+                <div class="col-md-4"><strong>Anciennes souscriptions:</strong> <span th:text="${importFichier.nbAnciennes}"></span></div>
+                <div class="col-md-4"><strong>Stock du mois:</strong> <span th:text="${importFichier.nbStock}"></span></div>
+                <div class="col-12" th:if="${importFichier.messageErreur != null}">
+                    <div class="alert alert-danger"><strong>Erreur:</strong> <span th:text="${importFichier.messageErreur}"></span></div>
+                </div>
+                <div class="col-md-6"><strong>Date import:</strong>
+                    <span th:text="${#temporals.format(importFichier.dateImport, 'dd/MM/yyyy HH:mm:ss')}"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Fiche client - Securicompte</title></head>
+<body>
+<section>
+  <div class="mb-3">
+    <a th:href="@{/clients/recherche}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Retour à la recherche
+    </a>
+  </div>
+
+  <div class="row g-4">
+    <!-- Fiche client -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-4">
+          <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center mb-3"
+               style="width:72px;height:72px;font-size:28px;color:#fff">
+            <i class="fas fa-user"></i>
+          </div>
+          <h5 class="fw-bold mb-1" th:text="${client.nom}">Nom</h5>
+          <div class="badge bg-secondary mb-3" th:text="${client.numeroClient}"></div>
+
+          <div th:if="${client.nbImpayes > 0}" class="alert alert-danger py-2 mb-0" style="font-size:13px">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            <strong th:text="${client.nbImpayes}"></strong> impayé(s) actif(s)
+            <span th:if="${client.montantTotalDu != null and client.montantTotalDu > 0}"
+                  th:text="' — ' + ${client.montantTotalDu} + ' FCFA'"></span>
+          </div>
+          <div th:if="${client.nbImpayes == 0}" class="alert alert-success py-2 mb-0" style="font-size:13px">
+            <i class="fas fa-check-circle me-1"></i>Aucun impayé en cours
+          </div>
+        </div>
+        <div class="card-footer bg-white border-0 px-4 pb-4">
+          <table class="table table-sm table-borderless mb-0">
+            <tr><td class="text-muted" style="font-size:12px">Compte</td>
+                <td class="fw-semibold" style="font-size:13px" th:text="${client.compte ?: '-'}"></td></tr>
+            <tr><td class="text-muted" style="font-size:12px">Agence</td>
+                <td class="fw-semibold" style="font-size:13px" th:text="${client.agenceLib ?: '-'}"></td></tr>
+            <tr><td class="text-muted" style="font-size:12px">Gestionnaire</td>
+                <td class="fw-semibold" style="font-size:13px" th:text="${client.gestionnaire ?: '-'}"></td></tr>
+            <tr><td class="text-muted" style="font-size:12px">Zone</td>
+                <td class="fw-semibold" style="font-size:13px" th:text="${client.zoneLib ?: '-'}"></td></tr>
+            <tr><td class="text-muted" style="font-size:12px">Date naissance</td>
+                <td class="fw-semibold" style="font-size:13px"
+                    th:text="${client.dateNaissance != null ? #temporals.format(client.dateNaissance,'dd/MM/yyyy') : '-'}"></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Onglets historique -->
+    <div class="col-lg-8">
+      <ul class="nav nav-tabs mb-3" id="clientTabs">
+        <li class="nav-item">
+          <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-impayes">
+            <i class="fas fa-exclamation-triangle me-1 text-danger"></i>Impayés
+            <span class="badge bg-danger ms-1"
+                  th:if="${!client.impayes.empty}" th:text="${client.impayes.size()}"></span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-historique">
+            <i class="fas fa-calendar-check me-1 text-success"></i>Historique paiements
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-souscriptions">
+            <i class="fas fa-file-contract me-1 text-info"></i>Souscriptions
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <!-- Impayés -->
+        <div class="tab-pane fade show active" id="tab-impayes">
+          <div class="card border-0 shadow-sm">
+            <div class="card-body p-0">
+              <table class="table table-hover mb-0">
+                <thead><tr><th>Période</th><th>Statut</th><th>Montant</th><th>Détecté</th><th>Régularisé</th></tr></thead>
+                <tbody>
+                  <tr th:each="imp : ${client.impayes}">
+                    <td><span class="badge bg-secondary" th:text="${imp.moisNom + ' ' + imp.annee}"></span></td>
+                    <td>
+                      <span class="badge"
+                            th:classappend="${imp.statut?.name() == 'IMPAYE'} ? 'badge-impaye' :
+                                            (${imp.statut?.name() == 'REGULARISE'} ? 'badge-regularise' : 'badge-litige')"
+                            th:text="${imp.statut?.libelle ?: '-'}"></span>
+                    </td>
+                    <td style="font-size:12px" th:text="${imp.montantDu != null ? imp.montantDu + ' FCFA' : '-'}"></td>
+                    <td style="font-size:12px"
+                        th:text="${imp.dateDetection != null ? #temporals.format(imp.dateDetection,'dd/MM/yyyy') : '-'}"></td>
+                    <td style="font-size:12px"
+                        th:text="${imp.dateRegularisation != null ? #temporals.format(imp.dateRegularisation,'dd/MM/yyyy') : '-'}"></td>
+                  </tr>
+                  <tr th:if="${client.impayes.empty}">
+                    <td colspan="5" class="text-center text-success py-3">
+                      <i class="fas fa-check-circle me-1"></i>Aucun impayé enregistré
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Historique paiements mois par mois -->
+        <div class="tab-pane fade" id="tab-historique">
+          <div class="card border-0 shadow-sm">
+            <div class="card-body">
+              <div class="d-flex flex-wrap gap-1">
+                <th:block th:each="h : ${client.historiquePaiements}">
+                  <div class="text-center rounded p-2" style="min-width:65px"
+                       th:style="${h.statut == 'PAYE'} ? 'background:#d1fae5;color:#065f46' :
+                                 (${h.statut == 'IMPAYE'} ? 'background:#fee2e2;color:#991b1b' : 'background:#f3f4f6;color:#6b7280')">
+                    <div style="font-size:10px;font-weight:700" th:text="${h.moisNom}"></div>
+                    <div style="font-size:10px" th:text="${h.annee}"></div>
+                    <i style="font-size:10px"
+                       th:classappend="${h.statut == 'PAYE'} ? 'fas fa-check' :
+                                      (${h.statut == 'IMPAYE'} ? 'fas fa-times' : 'fas fa-minus')"></i>
+                  </div>
+                </th:block>
+                <div th:if="${client.historiquePaiements.empty}" class="text-muted py-3">
+                  Aucun historique disponible
+                </div>
+              </div>
+              <div class="d-flex gap-3 mt-3" style="font-size:12px">
+                <span><span class="badge" style="background:#d1fae5;color:#065f46">✓</span> Payé</span>
+                <span><span class="badge" style="background:#fee2e2;color:#991b1b">✗</span> Impayé</span>
+                <span><span class="badge" style="background:#f3f4f6;color:#6b7280">—</span> Non importé</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Souscriptions -->
+        <div class="tab-pane fade" id="tab-souscriptions">
+          <div class="card border-0 shadow-sm">
+            <div class="card-body p-0">
+              <table class="table table-hover mb-0">
+                <thead><tr><th>Date souscription</th><th>Type</th><th>Package</th><th>Option</th><th>Commission</th></tr></thead>
+                <tbody>
+                  <tr th:each="s : ${client.souscriptions}">
+                    <td style="font-size:13px"
+                        th:text="${s.datSouscription != null ? #temporals.format(s.datSouscription,'dd/MM/yyyy') : '-'}"></td>
+                    <td><span class="badge" th:classappend="${s.typeSouscription == 'Nouvelle souscription'} ? 'bg-info' : 'bg-secondary'"
+                              th:text="${s.typeSouscription}"></span></td>
+                    <td style="font-size:12px" th:text="${s.libelPackage ?: '-'}"></td>
+                    <td style="font-size:12px" th:text="${s.optionSecuricompte ?: '-'}"></td>
+                    <td style="font-size:12px" th:text="${s.commissions != null ? s.commissions + ' FCFA' : '-'}"></td>
+                  </tr>
+                  <tr th:if="${client.souscriptions.empty}">
+                    <td colspan="5" class="text-center text-muted py-3">Aucune souscription</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Impayés - Securicompte</title></head>
+<body>
+<section>
+
+  <!-- Filtres -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+      <form th:action="@{/impayes}" method="get" class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label fw-semibold" style="font-size:12px">ANNÉE</label>
+          <select class="form-select form-select-sm" name="annee">
+            <option value="">Toutes</option>
+            <option th:each="a : ${annees}" th:value="${a}" th:text="${a}"
+                    th:selected="${filtre?.annee == a}"></option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold" style="font-size:12px">MOIS</label>
+          <select class="form-select form-select-sm" name="mois">
+            <option value="">Tous</option>
+            <option th:each="m : ${moisList}" th:value="${m[0]}" th:text="${m[1]}"
+                    th:selected="${filtre?.mois != null and filtre.mois == #numbers.parseInt(m[0])}"></option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold" style="font-size:12px">STATUT</label>
+          <select class="form-select form-select-sm" name="statut">
+            <option value="">Tous</option>
+            <option value="IMPAYE"    th:selected="${filtre?.statut?.name() == 'IMPAYE'}">Impayé</option>
+            <option value="REGULARISE" th:selected="${filtre?.statut?.name() == 'REGULARISE'}">Régularisé</option>
+            <option value="LITIGE"    th:selected="${filtre?.statut?.name() == 'LITIGE'}">Litige</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold" style="font-size:12px">AGENCE</label>
+          <select class="form-select form-select-sm" name="agence">
+            <option value="">Toutes</option>
+            <option th:each="a : ${agences}" th:value="${a}" th:text="${a}"
+                    th:selected="${filtre?.agence == a}"></option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold" style="font-size:12px">GESTIONNAIRE</label>
+          <select class="form-select form-select-sm" name="gestionnaire">
+            <option value="">Tous</option>
+            <option th:each="g : ${gestionnaires}" th:value="${g}" th:text="${g}"
+                    th:selected="${filtre?.gestionnaire == g}"></option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+          <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+            <i class="fas fa-filter me-1"></i>Filtrer
+          </button>
+          <a th:href="@{/impayes}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-times"></i></a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Résultats -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-3">
+      <div>
+        <h6 class="mb-0 fw-bold">
+          <i class="fas fa-exclamation-triangle me-2 text-danger"></i>Liste des impayés
+          <span class="badge bg-danger ms-2" th:text="${totalElements}">0</span>
+        </h6>
+      </div>
+      <a th:href="@{/impayes/export(annee=${filtre?.annee},mois=${filtre?.mois},statut=${filtre?.statut},agence=${filtre?.agence},gestionnaire=${filtre?.gestionnaire})}"
+         class="btn btn-sm btn-success">
+        <i class="fas fa-file-excel me-1"></i>Export Excel
+      </a>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th>
+              <th>Période</th><th>Statut</th><th>Montant dû</th>
+              <th>Détecté le</th><th>Régularisé le</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="imp : ${impayes}">
+              <td><a th:href="@{/clients/{id}(id=${imp.clientId})}"
+                     class="text-decoration-none fw-semibold" th:text="${imp.numeroClient}"></a></td>
+              <td th:text="${imp.nomClient}"></td>
+              <td><small class="text-muted" th:text="${imp.agenceLib ?: '-'}"></small></td>
+              <td><small class="text-muted" th:text="${imp.gestionnaire ?: '-'}"></small></td>
+              <td>
+                <span class="badge bg-secondary"
+                      th:text="${imp.moisNom + ' ' + imp.annee}"></span>
+              </td>
+              <td>
+                <span class="badge"
+                      th:classappend="${imp.statut?.name() == 'IMPAYE'} ? 'badge-impaye' :
+                                      (${imp.statut?.name() == 'REGULARISE'} ? 'badge-regularise' : 'badge-litige')"
+                      th:text="${imp.statut?.libelle ?: imp.statut}"></span>
+              </td>
+              <td style="font-size:12px"
+                  th:text="${imp.montantDu != null ? imp.montantDu + ' FCFA' : '-'}"></td>
+              <td style="font-size:12px"
+                  th:text="${imp.dateDetection != null ? #temporals.format(imp.dateDetection,'dd/MM/yyyy') : '-'}"></td>
+              <td style="font-size:12px"
+                  th:text="${imp.dateRegularisation != null ? #temporals.format(imp.dateRegularisation,'dd/MM/yyyy') : '-'}"></td>
+              <td>
+                <a th:href="@{/clients/{id}(id=${imp.clientId})}"
+                   class="btn btn-sm btn-outline-primary py-0 px-2">
+                  <i class="fas fa-eye"></i>
+                </a>
+              </td>
+            </tr>
+            <tr th:if="${impayes.empty}">
+              <td colspan="10" class="text-center text-muted py-5">
+                <i class="fas fa-check-circle fa-3x text-success mb-2 d-block"></i>
+                Aucun impayé trouvé pour ces critères.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="card-footer bg-white border-0 d-flex justify-content-between align-items-center"
+         th:if="${totalPages > 1}">
+      <small class="text-muted">
+        Page <span th:text="${impayes.number + 1}"></span> /
+        <span th:text="${totalPages}"></span>
+        (<span th:text="${totalElements}"></span> résultats)
+      </small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" th:classappend="${impayes.first} ? 'disabled'">
+            <a class="page-link" th:href="@{/impayes(page=${impayes.number - 1},annee=${filtre?.annee},mois=${filtre?.mois},statut=${filtre?.statut},agence=${filtre?.agence},gestionnaire=${filtre?.gestionnaire})}">&laquo;</a>
+          </li>
+          <li class="page-item" th:classappend="${impayes.last} ? 'disabled'">
+            <a class="page-link" th:href="@{/impayes(page=${impayes.number + 1},annee=${filtre?.annee},mois=${filtre?.mois},statut=${filtre?.statut},agence=${filtre?.agence},gestionnaire=${filtre?.gestionnaire})}">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <script>
+  // Régularisation rapide via AJAX
+  document.querySelectorAll('.btn-regulariser').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.dataset.id;
+      if (!confirm('Confirmer la régularisation de cet impayé ?')) return;
+      fetch(`/impayes/${id}/regulariser`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="_csrf"]')?.content || '' }
+      }).then(r => r.text()).then(res => {
+        if (res === 'OK') location.reload();
+        else alert('Erreur lors de la régularisation.');
+      });
+    });
+  });
+  </script>
+</section>
+</body>
+</html>
