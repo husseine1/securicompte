@@ -5,7 +5,6 @@ import com.securicompte.dto.ImportResultDto;
 import com.securicompte.repository.ClientRepository;
 import com.securicompte.repository.ImportFichierRepository;
 import com.securicompte.service.ImpayeService;
-import com.securicompte.service.ImportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
@@ -17,7 +16,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class DashboardController {
 
     private final ImpayeService impayeService;
-    private final ImportService importService;
     private final ClientRepository clientRepository;
     private final ImportFichierRepository importFichierRepository;
 
@@ -28,8 +26,7 @@ public class DashboardController {
         stats.setTotalClients(clientRepository.count());
         stats.setTotalImportsFaits(importFichierRepository.count());
         stats.setDerniersImports(
-            importService.getTousLesImports().stream()
-                .limit(5)
+            importFichierRepository.findTop5ByOrderByDateImportDesc().stream()
                 .map(i -> ImportResultDto.builder()
                     .importId(i.getId())
                     .nomFichier(i.getNomFichier())

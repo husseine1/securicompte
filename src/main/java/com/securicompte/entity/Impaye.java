@@ -25,7 +25,8 @@ import java.time.LocalDateTime;
 public class Impaye {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "impaye_seq")
+    @SequenceGenerator(name = "impaye_seq", sequenceName = "impaye_id_seq", allocationSize = 500)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)

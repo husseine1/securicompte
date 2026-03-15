@@ -46,9 +46,10 @@ public class ImportController {
             return "redirect:/import";
         }
 
-        if (!fichier.getOriginalFilename().endsWith(".xlsx") &&
-            !fichier.getOriginalFilename().endsWith(".xls")) {
-            redirectAttributes.addFlashAttribute("erreur", "Le fichier doit être au format Excel (.xlsx ou .xls)");
+        String filename = fichier.getOriginalFilename();
+        if (filename == null ||
+            (!filename.endsWith(".xlsx") && !filename.endsWith(".xls") && !filename.endsWith(".xlsb"))) {
+            redirectAttributes.addFlashAttribute("erreur", "Le fichier doit être au format Excel (.xlsx, .xls ou .xlsb)");
             return "redirect:/import";
         }
 
@@ -68,6 +69,25 @@ public class ImportController {
             redirectAttributes.addFlashAttribute("erreur", "Erreur inattendue: " + e.getMessage());
         }
 
+        return "redirect:/import";
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    public String detailImport(@PathVariable Long id, Model model) {
+        model.addAttribute("importFichier", importService.getImportById(id));
+        return "import/detail";
+    }
+
+    @PostMapping("/{id}/supprimer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String supprimerImport(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+        try {
+            importService.supprimerImport(id);
+            redirectAttributes.addFlashAttribute("succes", "Import supprimé avec succès.");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("erreur", "Erreur lors de la suppression : " + e.getMessage());
+        }
         return "redirect:/import";
     }
 

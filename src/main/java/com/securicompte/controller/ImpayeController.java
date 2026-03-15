@@ -44,8 +44,8 @@ public class ImpayeController {
         FiltreImpayeDto filtre = FiltreImpayeDto.builder()
             .annee(annee)
             .mois(mois)
-            .agence(agence)
-            .gestionnaire(gestionnaire)
+            .agence(agence != null && !agence.isBlank() ? agence : null)
+            .gestionnaire(gestionnaire != null && !gestionnaire.isBlank() ? gestionnaire : null)
             .statut(statut != null && !statut.isEmpty() ? StatutImpaye.valueOf(statut) : null)
             .page(page)
             .size(25)
@@ -85,7 +85,10 @@ public class ImpayeController {
             HttpServletResponse response) throws IOException {
 
         FiltreImpayeDto filtre = FiltreImpayeDto.builder()
-            .annee(annee).mois(mois).agence(agence).gestionnaire(gestionnaire)
+            .annee(annee)
+            .mois(mois)
+            .agence(agence != null && !agence.isBlank() ? agence : null)
+            .gestionnaire(gestionnaire != null && !gestionnaire.isBlank() ? gestionnaire : null)
             .statut(statut != null && !statut.isEmpty() ? StatutImpaye.valueOf(statut) : null)
             .build();
 

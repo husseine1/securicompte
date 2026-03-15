@@ -3,7 +3,15 @@ package com.securicompte.service;
 import com.securicompte.entity.*;
 import com.securicompte.enums.TypeSouscription;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellReference;
+import org.apache.poi.util.IOUtils;
+import org.apache.poi.xssf.binary.XSSFBSharedStringsTable;
+import org.apache.poi.xssf.binary.XSSFBSheetHandler;
+import org.apache.poi.xssf.binary.XSSFBStylesTable;
+import org.apache.poi.xssf.eventusermodel.XSSFBReader;
+import org.apache.poi.xssf.usermodel.XSSFComment;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,12 +26,13 @@ import java.util.*;
 @Slf4j
 public class ExcelParserService {
 
+    // Mots-clés de recherche (correspondance partielle insensible à la casse)
     private static final List<String> SHEETS_NOUVELLE =
-        List.of("nouvelle souscription", "nouvelles souscriptions", "nouvelle");
+        List.of("nouvelle souscription", "nouvelles souscriptions", "nouvelle", "nv souscription", "nv");
     private static final List<String> SHEETS_ANCIENNE =
-        List.of("ancienne souscription", "anciennes souscriptions", "ancienne");
+        List.of("ancienne souscription", "anciennes souscriptions", "ancienne", "anc souscription", "anc");
     private static final List<String> SHEETS_STOCK =
-        List.of("stock du mois", "stock", "stock mois");
+        List.of("stock du mois", "stock mois", "stock mensuel", "stock");
 
     public record ExcelData(
         List<Map<String, Object>> nouvelles,
@@ -35,6 +44,10 @@ public class ExcelParserService {
      * Parse le fichier Excel et retourne les données des 3 feuilles.
      */
     public ExcelData parseExcel(MultipartFile file) throws IOException {
+        String filename = file.getOriginalFilename();
+        if (filename != null && filename.toLowerCase().endsWith(".xlsb")) {
+            return parseXlsb(file);
+        }
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheetNouvelle = findSheet(workbook, SHEETS_NOUVELLE);
             Sheet sheetAncienne = findSheet(workbook, SHEETS_ANCIENNE);
@@ -58,22 +71,154 @@ public class ExcelParserService {
         }
     }
 
+    private ExcelData parseXlsb(MultipartFile file) throws IOException {
+        // Augmenter la limite POI pour les grands fichiers xlsb
+        IOUtils.setByteArrayMaxOverride(300_000_000);
+        Map<String, List<Map<String, Object>>> sheetsData = new LinkedHashMap<>();
+        try (OPCPackage pkg = OPCPackage.open(file.getInputStream())) {
+            XSSFBReader reader;
+            try {
+                reader = new XSSFBReader(pkg);
+            } catch (org.apache.poi.openxml4j.exceptions.OpenXML4JException e) {
+                throw new IOException("Impossible de lire le fichier .xlsb", e);
+            }
+            // Utiliser XSSFBSharedStringsTable (format binaire xlsb) au lieu de getSharedStringsTable()
+            org.apache.poi.xssf.model.SharedStrings sst;
+            try {
+                sst = new XSSFBSharedStringsTable(pkg);
+            } catch (Exception e) {
+                log.warn("Impossible de lire la table des chaînes xlsb: {}", e.getMessage());
+                sst = null;
+            }
+            XSSFBStylesTable styles = reader.getXSSFBStylesTable();
+            XSSFBReader.SheetIterator iter = (XSSFBReader.SheetIterator) reader.getSheetsData();
+            while (iter.hasNext()) {
+                try (java.io.InputStream sheetStream = iter.next()) {
+                    String sheetName = iter.getSheetName().toLowerCase().trim();
+                    XlsbRowCollector collector = new XlsbRowCollector();
+                    XSSFBSheetHandler handler = new XSSFBSheetHandler(
+                        sheetStream, styles, iter.getXSSFBSheetComments(),
+                        sst, collector, new DataFormatter(), false);
+                    handler.parse();
+                    log.info("Feuille '{}' — colonnes: {} — {} lignes valides",
+                        sheetName, collector.getHeaders(), collector.getRows().size());
+                    sheetsData.put(sheetName, collector.getRows());
+                }
+            }
+            log.info("Feuilles trouvées dans le fichier xlsb: {}", sheetsData.keySet());
+        } catch (org.apache.poi.openxml4j.exceptions.InvalidFormatException e) {
+            throw new IOException("Fichier .xlsb invalide ou corrompu", e);
+        }
+
+        List<Map<String, Object>> nouvelles = findSheetRows(sheetsData, SHEETS_NOUVELLE);
+        List<Map<String, Object>> anciennes = findSheetRows(sheetsData, SHEETS_ANCIENNE);
+        List<Map<String, Object>> stock     = findSheetRows(sheetsData, SHEETS_STOCK);
+
+        if (nouvelles == null)
+            throw new IllegalArgumentException("Feuille 'Nouvelle souscription' introuvable dans le fichier.");
+        if (anciennes == null)
+            throw new IllegalArgumentException("Feuille 'Ancienne souscription' introuvable dans le fichier.");
+        if (stock == null)
+            throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable dans le fichier.");
+
+        log.info("Parsing XLSB OK — Nouvelles: {}, Anciennes: {}, Stock: {}",
+            nouvelles.size(), anciennes.size(), stock.size());
+        return new ExcelData(nouvelles, anciennes, stock);
+    }
+
+    private List<Map<String, Object>> findSheetRows(Map<String, List<Map<String, Object>>> data, List<String> keywords) {
+        // 1. Correspondance exacte
+        for (String kw : keywords) {
+            if (data.containsKey(kw)) return data.get(kw);
+        }
+        // 2. Correspondance partielle (le nom de la feuille contient le mot-clé)
+        for (Map.Entry<String, List<Map<String, Object>>> entry : data.entrySet()) {
+            String sheetName = entry.getKey();
+            for (String kw : keywords) {
+                if (sheetName.contains(kw)) return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static class XlsbRowCollector implements XSSFBSheetHandler.SheetContentsHandler {
+        private final List<Map<String, Object>> rows = new ArrayList<>();
+        private final List<String> headers = new ArrayList<>();
+        // En-têtes tentatives pour la ligne courante (avant de confirmer que c'est la ligne d'en-tête)
+        private final List<String> pendingHeaders = new ArrayList<>();
+        private Map<String, Object> currentRow;
+        private boolean headerFound = false;
+        private boolean currentRowHasClientCol = false;
+
+        @Override
+        public void startRow(int rowNum) {
+            currentRow = new LinkedHashMap<>();
+            pendingHeaders.clear();
+            currentRowHasClientCol = false;
+        }
+
+        @Override
+        public void endRow(int rowNum) {
+            if (!headerFound) {
+                if (currentRowHasClientCol) {
+                    // Cette ligne est la vraie ligne d'en-tête
+                    headers.addAll(pendingHeaders);
+                    headerFound = true;
+                }
+                // Sinon c'est une ligne de titre/métadonnée, on l'ignore
+            } else if (currentRow != null) {
+                Object clientVal = currentRow.get("CLIENT");
+                if (clientVal != null && !clientVal.toString().isBlank()) {
+                    rows.add(currentRow);
+                }
+            }
+            currentRow = null;
+        }
+
+        @Override
+        public void cell(String cellReference, String formattedValue, XSSFComment comment) {
+            if (cellReference == null) return;
+            int col = new CellReference(cellReference).getCol();
+            if (!headerFound) {
+                // Construire les en-têtes provisoires pour cette ligne
+                while (pendingHeaders.size() <= col) pendingHeaders.add("COL_" + pendingHeaders.size());
+                String colName = formattedValue != null ? formattedValue.trim().toUpperCase() : "COL_" + col;
+                pendingHeaders.set(col, colName);
+                if ("CLIENT".equals(colName)) currentRowHasClientCol = true;
+            } else if (currentRow != null && col < headers.size()) {
+                if (formattedValue != null && !formattedValue.isBlank()) {
+                    currentRow.put(headers.get(col), formattedValue.trim());
+                }
+            }
+        }
+
+        @Override
+        public void hyperlinkCell(String cellReference, String formattedValue, String url, String label, XSSFComment comment) {}
+
+        public List<Map<String, Object>> getRows() { return rows; }
+        public List<String> getHeaders() { return headers; }
+    }
+
     /**
      * Parse une feuille et retourne une liste de Map<colonne, valeur>.
      */
     private List<Map<String, Object>> parseSheet(Sheet sheet) {
         List<Map<String, Object>> rows = new ArrayList<>();
         List<String> headers = new ArrayList<>();
-        boolean firstRow = true;
+        boolean headerFound = false;
 
         for (Row row : sheet) {
-            if (firstRow) {
-                // Ligne d'en-tête → mémoriser les noms de colonnes
+            if (!headerFound) {
+                // Chercher la ligne qui contient la colonne "CLIENT"
+                List<String> candidats = new ArrayList<>();
                 for (Cell cell : row) {
                     String header = getCellStringValue(cell);
-                    headers.add(header != null ? header.trim().toUpperCase() : "COL_" + cell.getColumnIndex());
+                    candidats.add(header != null ? header.trim().toUpperCase() : "COL_" + cell.getColumnIndex());
                 }
-                firstRow = false;
+                if (candidats.contains("CLIENT")) {
+                    headers.addAll(candidats);
+                    headerFound = true;
+                }
                 continue;
             }
             if (isRowEmpty(row)) continue;

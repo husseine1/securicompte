@@ -40,7 +40,14 @@ public class ClientService {
     public Page<ClientDto> rechercherClients(String recherche, int page, int size) {
         Page<Client> clients = clientRepository.rechercherClients(
             recherche, PageRequest.of(page, size, Sort.by("nom")));
-        return clients.map(this::toClientDto);
+        return clients.map(c -> ClientDto.builder()
+            .id(c.getId())
+            .numeroClient(c.getNumeroClient())
+            .nom(c.getNom())
+            .zoneLib(c.getZoneLib())
+            .agenceLib(c.getAgenceLib())
+            .gestionnaire(c.getGestionnaire())
+            .build());
     }
 
     /**

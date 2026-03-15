@@ -12,6 +12,7 @@ public interface ImportFichierRepository extends JpaRepository<ImportFichier, Lo
     Optional<ImportFichier> findByAnneeAndMois(Integer annee, Integer mois);
     boolean existsByAnneeAndMois(Integer annee, Integer mois);
     List<ImportFichier> findAllByOrderByAnneeDescMoisDesc();
+    List<ImportFichier> findTop5ByOrderByDateImportDesc();
     List<ImportFichier> findByAnneeOrderByMoisDesc(Integer annee);
 
     @Query("SELECT DISTINCT f.annee FROM ImportFichier f ORDER BY f.annee DESC")

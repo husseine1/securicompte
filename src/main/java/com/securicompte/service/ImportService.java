@@ -5,16 +5,17 @@ import com.securicompte.entity.*;
 import com.securicompte.enums.StatutImport;
 import com.securicompte.enums.TypeSouscription;
 import com.securicompte.repository.*;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,87 +28,116 @@ public class ImportService {
     private final ClientRepository clientRepository;
     private final SouscriptionRepository souscriptionRepository;
     private final StockMensuelRepository stockMensuelRepository;
+    private final ImpayeRepository impayeRepository;
+    private final PlatformTransactionManager transactionManager;
 
     /**
      * Point d'entrée principal de l'import.
-     * Lit le fichier Excel, importe les 3 feuilles, puis lance la détection.
+     * Chaque étape s'exécute dans sa propre transaction :
+     *  Tx1 - initialisation de l'enregistrement d'import (toujours commité)
+     *  Tx2 - suppression + import des données (rollback si erreur)
+     *  Tx3 - mise à jour statut SUCCES ou ECHEC (toujours commité)
      */
-    @Transactional
     public ImportResultDto importerFichier(MultipartFile file, Integer annee, Integer mois, User importePar) {
         log.info("Début import fichier: {} pour {}/{}", file.getOriginalFilename(), mois, annee);
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
 
-        // Vérifier si ce mois a déjà été importé
-        if (importFichierRepository.existsByAnneeAndMois(annee, mois)) {
-            // Supprimer l'ancien import et re-importer
-            ImportFichier ancien = importFichierRepository.findByAnneeAndMois(annee, mois).get();
-            supprimerDonneesMois(annee, mois);
-            importFichierRepository.delete(ancien);
-            log.info("Ancien import {}/{} supprimé, réimport en cours...", mois, annee);
-        }
+        boolean isReimport = importFichierRepository.existsByAnneeAndMois(annee, mois);
 
-        // Créer l'enregistrement d'import
-        ImportFichier importFichier = ImportFichier.builder()
-            .nomFichier(file.getOriginalFilename())
-            .annee(annee)
-            .mois(mois)
-            .statut(StatutImport.EN_COURS)
-            .importePar(importePar)
-            .build();
-        importFichier = importFichierRepository.save(importFichier);
+        // Tx1 : créer ou réinitialiser l'enregistrement d'import
+        Long importId = tx.execute(status -> {
+            ImportFichier f;
+            if (isReimport) {
+                f = importFichierRepository.findByAnneeAndMois(annee, mois).get();
+                f.setNomFichier(file.getOriginalFilename());
+                f.setStatut(StatutImport.EN_COURS);
+                f.setImportePar(importePar);
+                f.setMessageErreur(null);
+                f.setNbNouvelles(0);
+                f.setNbAnciennes(0);
+                f.setNbStock(0);
+                f.setNbErreurs(0);
+                f.setDateFinImport(null);
+                log.info("Réimport {}/{} en cours...", mois, annee);
+            } else {
+                f = ImportFichier.builder()
+                    .nomFichier(file.getOriginalFilename())
+                    .annee(annee)
+                    .mois(mois)
+                    .statut(StatutImport.EN_COURS)
+                    .importePar(importePar)
+                    .build();
+            }
+            return importFichierRepository.save(f).getId();
+        });
 
         try {
-            // Parser le fichier Excel
+            // Parser le fichier (hors transaction — lecture seule)
             ExcelParserService.ExcelData excelData = excelParserService.parseExcel(file);
 
-            // Importer les nouvelles souscriptions
-            int nbNouvelles = importerSouscriptions(
-                excelData.nouvelles(), TypeSouscription.NOUVELLE, importFichier);
+            // Tx2 : supprimer l'ancien stock + importer toutes les données (atomique)
+            int[] counts = tx.execute(status -> {
+                ImportFichier importFichier = importFichierRepository.findById(importId).orElseThrow();
+                if (isReimport) {
+                    supprimerDonneesMois(annee, mois, importFichier.getId());
+                }
+                Map<String, Client> cache = construireClientCache(
+                    excelData.nouvelles(), excelData.anciennes(), excelData.stock());
+                int nn = importerSouscriptionsBulk(
+                    excelData.nouvelles(), TypeSouscription.NOUVELLE, importFichier, cache);
+                int na = importerSouscriptionsBulk(
+                    excelData.anciennes(), TypeSouscription.ANCIENNE, importFichier, cache);
+                int ns = importerStockBulk(
+                    excelData.stock(), annee, mois, importFichier, cache);
+                int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
+                return new int[]{nn, na, ns, ni};
+            });
 
-            // Importer les anciennes souscriptions
-            int nbAnciennes = importerSouscriptions(
-                excelData.anciennes(), TypeSouscription.ANCIENNE, importFichier);
-
-            // Importer le stock mensuel
-            int nbStock = importerStock(excelData.stock(), annee, mois, importFichier);
-
-            // Lancer la détection des impayés
-            int nbImpaYes = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
-
-            // Mettre à jour le statut de l'import
-            importFichier.setStatut(StatutImport.SUCCES);
-            importFichier.setNbNouvelles(nbNouvelles);
-            importFichier.setNbAnciennes(nbAnciennes);
-            importFichier.setNbStock(nbStock);
-            importFichier.setDateFinImport(LocalDateTime.now());
-            importFichierRepository.save(importFichier);
+            // Tx3 : marquer SUCCES
+            final int[] c = counts;
+            tx.execute(status -> {
+                ImportFichier f = importFichierRepository.findById(importId).orElseThrow();
+                f.setStatut(StatutImport.SUCCES);
+                f.setNbNouvelles(c[0]);
+                f.setNbAnciennes(c[1]);
+                f.setNbStock(c[2]);
+                f.setDateFinImport(LocalDateTime.now());
+                return importFichierRepository.save(f);
+            });
 
             log.info("Import terminé avec succès: Nouvelles={}, Anciennes={}, Stock={}, Impayés={}",
-                nbNouvelles, nbAnciennes, nbStock, nbImpaYes);
+                c[0], c[1], c[2], c[3]);
 
+            ImportFichier saved = importFichierRepository.findById(importId).orElseThrow();
             return ImportResultDto.builder()
-                .importId(importFichier.getId())
+                .importId(importId)
                 .nomFichier(file.getOriginalFilename())
                 .annee(annee)
                 .mois(mois)
                 .statut("SUCCES")
-                .nbNouvelles(nbNouvelles)
-                .nbAnciennes(nbAnciennes)
-                .nbStock(nbStock)
-                .nbImpaYesDetectes(nbImpaYes)
+                .nbNouvelles(c[0])
+                .nbAnciennes(c[1])
+                .nbStock(c[2])
+                .nbImpaYesDetectes(c[3])
                 .nbErreurs(0)
-                .dateImport(importFichier.getDateImport())
+                .dateImport(saved.getDateImport())
                 .succes(true)
                 .build();
 
         } catch (Exception e) {
             log.error("Erreur lors de l'import: {}", e.getMessage(), e);
-            importFichier.setStatut(StatutImport.ECHEC);
-            importFichier.setMessageErreur(e.getMessage());
-            importFichier.setDateFinImport(LocalDateTime.now());
-            importFichierRepository.save(importFichier);
+
+            // Tx3 (échec) : marquer ECHEC dans une transaction indépendante
+            tx.execute(status -> {
+                ImportFichier f = importFichierRepository.findById(importId).orElseThrow();
+                f.setStatut(StatutImport.ECHEC);
+                f.setMessageErreur(e.getMessage());
+                f.setDateFinImport(LocalDateTime.now());
+                return importFichierRepository.save(f);
+            });
 
             return ImportResultDto.builder()
-                .importId(importFichier.getId())
+                .importId(importId)
                 .nomFichier(file.getOriginalFilename())
                 .annee(annee)
                 .mois(mois)
@@ -119,88 +149,132 @@ public class ImportService {
     }
 
     /**
-     * Importe les souscriptions (nouvelles ou anciennes)
+     * Charge tous les clients existants en une seule requête,
+     * crée les nouveaux en bulk, retourne un cache Map<numeroClient, Client>.
      */
-    private int importerSouscriptions(List<Map<String, Object>> rows,
-                                       TypeSouscription type,
-                                       ImportFichier importFichier) {
-        int count = 0;
+    private Map<String, Client> construireClientCache(
+            List<Map<String, Object>> nouvelles,
+            List<Map<String, Object>> anciennes,
+            List<Map<String, Object>> stock) {
+
+        // Collecter la première ligne de chaque numéro de client (toutes feuilles)
+        Map<String, Map<String, Object>> premiereLignePar = new LinkedHashMap<>();
+        for (List<Map<String, Object>> feuille : List.of(nouvelles, anciennes, stock)) {
+            for (Map<String, Object> row : feuille) {
+                String num = excelParserService.getString(row, "CLIENT");
+                if (num != null) premiereLignePar.putIfAbsent(num, row);
+            }
+        }
+
+        // Charger les clients existants par lots (limite PostgreSQL : 65 535 paramètres)
+        List<String> numeros = new ArrayList<>(premiereLignePar.keySet());
+        Map<String, Client> cache = new HashMap<>();
+        int batchSize = 5000;
+        for (int i = 0; i < numeros.size(); i += batchSize) {
+            List<String> batch = numeros.subList(i, Math.min(i + batchSize, numeros.size()));
+            clientRepository.findByNumeroClientIn(batch)
+                .forEach(c -> cache.put(c.getNumeroClient(), c));
+        }
+
+        // Mettre à jour les infos des clients existants uniquement si les données ont changé
+        List<Client> aMettrAJour = new ArrayList<>();
+        for (Client client : cache.values()) {
+            Map<String, Object> row = premiereLignePar.get(client.getNumeroClient());
+            if (row != null && clientAChange(client, row)) {
+                updateClientInfos(client, row);
+                aMettrAJour.add(client);
+            }
+        }
+        if (!aMettrAJour.isEmpty()) {
+            clientRepository.saveAll(aMettrAJour);
+            log.info("{} client(s) mis à jour (données modifiées)", aMettrAJour.size());
+        }
+
+        // Créer les nouveaux clients en bulk
+        List<Client> nouveaux = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : premiereLignePar.entrySet()) {
+            if (!cache.containsKey(entry.getKey())) {
+                nouveaux.add(excelParserService.rowToClient(entry.getValue()));
+            }
+        }
+        if (!nouveaux.isEmpty()) {
+            List<Client> saved = clientRepository.saveAll(nouveaux);
+            saved.forEach(c -> cache.put(c.getNumeroClient(), c));
+            log.info("{} nouveau(x) client(s) créé(s)", saved.size());
+        }
+
+        log.info("Cache clients: {} clients chargés/créés", cache.size());
+        return cache;
+    }
+
+    /**
+     * Importe les souscriptions en bulk (nouvelles ou anciennes).
+     */
+    private int importerSouscriptionsBulk(List<Map<String, Object>> rows,
+                                           TypeSouscription type,
+                                           ImportFichier importFichier,
+                                           Map<String, Client> clientCache) {
+        // Charger toutes les clés existantes pour ce type en une seule requête
+        Set<String> existingKeys = new HashSet<>(souscriptionRepository.findExistingKeys(type));
+
+        List<Souscription> toSave = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             try {
-                String numeroClient = excelParserService.getString(row, "CLIENT");
-                if (numeroClient == null) continue;
+                String num = excelParserService.getString(row, "CLIENT");
+                if (num == null) continue;
+                Client client = clientCache.get(num);
+                if (client == null) continue;
 
-                // Trouver ou créer le client
-                Client client = trouverOuCreerClient(row);
-
-                // Créer la souscription si elle n'existe pas encore
-                java.time.LocalDate datSouscription = null;
-                Object datVal = row.get("DATSOUSCRIPTION");
-                if (datVal instanceof java.time.LocalDate ld) datSouscription = ld;
-
-                if (datSouscription != null && !souscriptionRepository
-                    .existsByClientIdAndDatSouscriptionAndTypeSouscription(
-                        client.getId(), datSouscription, type)) {
-
-                    Souscription souscription = excelParserService
-                        .rowToSouscription(row, client, type, importFichier);
-                    souscriptionRepository.save(souscription);
-                    count++;
+                Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
+                String key = client.getId() + "_" + s.getDatSouscription() + "_" + type;
+                if (!existingKeys.contains(key)) {
+                    toSave.add(s);
+                    existingKeys.add(key);
                 }
             } catch (Exception e) {
                 log.warn("Erreur import souscription ligne: {}", e.getMessage());
             }
         }
-        return count;
+        souscriptionRepository.saveAll(toSave);
+        return toSave.size();
     }
 
     /**
-     * Importe le stock mensuel
+     * Importe le stock mensuel en bulk.
      */
-    private int importerStock(List<Map<String, Object>> rows, int annee, int mois,
-                               ImportFichier importFichier) {
-        int count = 0;
+    private int importerStockBulk(List<Map<String, Object>> rows, int annee, int mois,
+                                   ImportFichier importFichier,
+                                   Map<String, Client> clientCache) {
+        Set<Long> seen = new HashSet<>();
+        List<StockMensuel> toSave = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             try {
-                String numeroClient = excelParserService.getString(row, "CLIENT");
-                if (numeroClient == null) continue;
+                String num = excelParserService.getString(row, "CLIENT");
+                if (num == null) continue;
+                Client client = clientCache.get(num);
+                if (client == null) continue;
 
-                Client client = trouverOuCreerClient(row);
-
-                // Créer ou mettre à jour le stock
-                Optional<StockMensuel> existant = stockMensuelRepository
-                    .findByClientIdAndAnneeAndMois(client.getId(), annee, mois);
-
-                if (existant.isEmpty()) {
-                    StockMensuel stock = excelParserService
-                        .rowToStock(row, client, annee, mois, importFichier);
-                    stockMensuelRepository.save(stock);
-                    count++;
+                if (!seen.contains(client.getId())) {
+                    toSave.add(excelParserService.rowToStock(row, client, annee, mois, importFichier));
+                    seen.add(client.getId());
                 }
             } catch (Exception e) {
                 log.warn("Erreur import stock ligne: {}", e.getMessage());
             }
         }
-        return count;
+        stockMensuelRepository.saveAll(toSave);
+        return toSave.size();
     }
 
-    /**
-     * Trouve un client existant ou en crée un nouveau
-     */
-    private Client trouverOuCreerClient(Map<String, Object> row) {
-        String numeroClient = excelParserService.getString(row, "CLIENT");
-
-        Optional<Client> existant = clientRepository.findByNumeroClient(numeroClient);
-        if (existant.isPresent()) {
-            // Mettre à jour les infos si nécessaires
-            Client client = existant.get();
-            updateClientInfos(client, row);
-            return clientRepository.save(client);
-        }
-
-        // Créer un nouveau client
-        Client newClient = excelParserService.rowToClient(row);
-        return clientRepository.save(newClient);
+    private boolean clientAChange(Client client, Map<String, Object> row) {
+        String nom         = excelParserService.getString(row, "NOM");
+        String agenceLib   = excelParserService.getString(row, "AGENCELIB");
+        String gestionnaire = excelParserService.getString(row, "GESTIONNAIRE");
+        String zoneLib     = excelParserService.getString(row, "ZONELIB");
+        return !Objects.equals(nom, client.getNom())
+            || !Objects.equals(agenceLib, client.getAgenceLib())
+            || !Objects.equals(gestionnaire, client.getGestionnaire())
+            || !Objects.equals(zoneLib, client.getZoneLib());
     }
 
     private void updateClientInfos(Client client, Map<String, Object> row) {
@@ -215,14 +289,26 @@ public class ImportService {
         if (zoneLib != null) client.setZoneLib(zoneLib);
     }
 
-    /**
-     * Supprime toutes les données d'un mois avant réimport
-     */
-    private void supprimerDonneesMois(Integer annee, Integer mois) {
-        // Supprimer les stocks du mois
-        List<StockMensuel> stocks = stockMensuelRepository.findByAnneeAndMois(annee, mois);
-        stockMensuelRepository.deleteAll(stocks);
-        log.info("Suppression de {} enregistrements stock {}/{}", stocks.size(), mois, annee);
+    private void supprimerDonneesMois(Integer annee, Integer mois, Long importFichierId) {
+        stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
+        log.info("Suppression bulk stock {}/{}", mois, annee);
+        souscriptionRepository.deleteByImportFichierId(importFichierId);
+        log.info("Suppression bulk des souscriptions de l'import {}/{}", mois, annee);
+    }
+
+    public ImportFichier getImportById(Long id) {
+        return importFichierRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + id));
+    }
+
+    @Transactional
+    public void supprimerImport(Long importId) {
+        ImportFichier imp = importFichierRepository.findById(importId)
+            .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + importId));
+        impayeRepository.deleteByAnneeAndMois(imp.getAnnee(), imp.getMois());
+        supprimerDonneesMois(imp.getAnnee(), imp.getMois(), importId);
+        importFichierRepository.deleteById(importId);
+        log.info("Import {}/{} supprimé (id={})", imp.getMois(), imp.getAnnee(), importId);
     }
 
     public List<ImportFichier> getTousLesImports() {

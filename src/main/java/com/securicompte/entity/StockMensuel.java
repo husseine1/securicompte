@@ -24,7 +24,8 @@ import java.time.LocalDateTime;
 public class StockMensuel {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "stock_mensuel_seq")
+    @SequenceGenerator(name = "stock_mensuel_seq", sequenceName = "stock_mensuel_id_seq", allocationSize = 500)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)

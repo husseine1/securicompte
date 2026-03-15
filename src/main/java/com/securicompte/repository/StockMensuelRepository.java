@@ -2,6 +2,7 @@ package com.securicompte.repository;
 
 import com.securicompte.entity.StockMensuel;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,10 @@ public interface StockMensuelRepository extends JpaRepository<StockMensuel, Long
     boolean existsByClientIdAndAnneeAndMois(Long clientId, Integer annee, Integer mois);
     List<StockMensuel> findByAnneeAndMois(Integer annee, Integer mois);
     List<StockMensuel> findByClientIdOrderByAnneeDescMoisDesc(Long clientId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM StockMensuel s WHERE s.annee = :annee AND s.mois = :mois")
+    void deleteBulkByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
     @Query("SELECT DISTINCT s.client.id FROM StockMensuel s WHERE s.annee = :annee AND s.mois = :mois")
     List<Long> findClientIdsPresentsDansMois(@Param("annee") Integer annee, @Param("mois") Integer mois);

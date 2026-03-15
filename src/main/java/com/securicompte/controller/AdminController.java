@@ -92,6 +92,24 @@ public class AdminController {
         return "redirect:/admin/utilisateurs";
     }
 
+    @PostMapping("/utilisateurs/{id}/modifier")
+    public String modifierUtilisateur(
+            @PathVariable Long id,
+            @RequestParam String nomComplet,
+            @RequestParam(required = false) String email,
+            @RequestParam Long roleId,
+            RedirectAttributes ra) {
+
+        userRepository.findById(id).ifPresent(user -> {
+            user.setNomComplet(nomComplet);
+            user.setEmail(email);
+            roleRepository.findById(roleId).ifPresent(user::setRole);
+            userRepository.save(user);
+        });
+        ra.addFlashAttribute("succes", "Utilisateur modifié avec succès.");
+        return "redirect:/admin/utilisateurs";
+    }
+
     @PostMapping("/utilisateurs/{id}/supprimer")
     public String supprimerUtilisateur(@PathVariable Long id, RedirectAttributes ra) {
         userRepository.deleteById(id);

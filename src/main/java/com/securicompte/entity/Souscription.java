@@ -24,7 +24,8 @@ import java.time.LocalDateTime;
 public class Souscription {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "souscription_seq")
+    @SequenceGenerator(name = "souscription_seq", sequenceName = "souscription_id_seq", allocationSize = 500)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)

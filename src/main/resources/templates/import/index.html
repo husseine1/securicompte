@@ -1,121 +1,158 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
-    <title>Import Excel</title>
-    <section>
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h2 class="fw-bold mb-1"><i class="fas fa-file-import me-2 text-primary"></i>Import fichier Excel</h2>
-                <p class="text-muted mb-0">Importez les fichiers mensuels Securicompte</p>
-            </div>
-        </div>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Import fichiers - Securicompte</title></head>
+<body>
+<section>
 
-        <div class="row g-4">
-            <!-- Formulaire d'upload -->
-            <div class="col-lg-5">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0"><i class="fas fa-upload me-2"></i>Nouveau fichier</h6>
-                    </div>
-                    <div class="card-body p-4">
-                        <div th:if="${dernierImport}" class="alert alert-success py-2 small mb-3">
-                            <strong>Import réussi !</strong><br>
-                            Stock: <span th:text="${dernierImport.nbStock}">0</span> clients |
-                            Impayés détectés: <span th:text="${dernierImport.nbImpaYesDetectes}">0</span>
-                        </div>
-                        <form th:action="@{/import/upload}" method="post" enctype="multipart/form-data" id="uploadForm">
-                            <div class="mb-3">
-                                <label class="form-label fw-semibold">Fichier Excel (.xlsx)</label>
-                                <div class="upload-zone border-2 border-dashed rounded p-4 text-center" id="uploadZone">
-                                    <i class="fas fa-file-excel fa-3x text-success mb-2"></i>
-                                    <p class="text-muted mb-2">Glissez votre fichier ici ou</p>
-                                    <input type="file" name="fichier" id="fichierInput" accept=".xlsx,.xls"
-                                           class="d-none" required onchange="updateFileName(this)">
-                                    <label for="fichierInput" class="btn btn-outline-primary btn-sm">
-                                        <i class="fas fa-folder-open me-1"></i>Parcourir
-                                    </label>
-                                    <div id="fileNameDisplay" class="mt-2 small text-success d-none fw-semibold"></div>
-                                </div>
-                            </div>
-                            <div class="row g-2 mb-3">
-                                <div class="col-6">
-                                    <label class="form-label fw-semibold">Année</label>
-                                    <input type="number" name="annee" class="form-control"
-                                           th:value="${anneeCourante}" min="2020" max="2030" required>
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label fw-semibold">Mois</label>
-                                    <select name="mois" class="form-select" required>
-                                        <option th:each="m : ${#numbers.sequence(1,12)}"
-                                                th:value="${m}"
-                                                th:text="${{'Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'}[m-1]}"
-                                                th:selected="${m == moisCourant}">Mois</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="alert alert-info py-2 small">
-                                <i class="fas fa-info-circle me-1"></i>
-                                Le fichier doit contenir 3 feuilles :
-                                <strong>Nouvelle souscription</strong>,
-                                <strong>Ancienne souscription</strong>,
-                                <strong>Stock du mois</strong>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100 py-2" id="submitBtn">
-                                <i class="fas fa-upload me-2"></i>Importer le fichier
-                            </button>
-                        </form>
-                    </div>
-                </div>
+  <div class="row g-4">
+
+    <!-- Formulaire d'import -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-file-upload me-2 text-primary"></i>Importer un fichier Excel</h6>
+        </div>
+        <div class="card-body">
+          <form id="importForm" th:action="@{/import/upload}" method="post" enctype="multipart/form-data">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px">FICHIER EXCEL</label>
+              <input type="file" class="form-control" id="fichierInput" name="fichier"
+                     accept=".xlsx,.xls,.xlsb" required>
+              <div class="form-text">Formats acceptés : .xlsx, .xls, .xlsb</div>
             </div>
 
-            <!-- Historique -->
-            <div class="col-lg-7">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0 fw-bold">Historique des imports</h6>
-                        <span class="badge bg-secondary" th:text="${#lists.size(imports)} + ' fichier(s)'">0</span>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Période</th>
-                                        <th>Fichier</th>
-                                        <th>Stock</th>
-                                        <th>Nouvelles</th>
-                                        <th>Statut</th>
-                                        <th>Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr th:each="imp : ${imports}">
-                                        <td class="fw-semibold" th:text="${imp.mois} + '/' + ${imp.annee}">-</td>
-                                        <td class="small text-truncate" style="max-width:150px" th:text="${imp.nomFichier}">-</td>
-                                        <td th:text="${imp.nbStock}">0</td>
-                                        <td th:text="${imp.nbNouvelles}">0</td>
-                                        <td>
-                                            <span class="badge"
-                                                  th:classappend="${imp.statut.name() == 'SUCCES'} ? 'bg-success' :
-                                                                   (${imp.statut.name() == 'ECHEC'} ? 'bg-danger' :
-                                                                   (${imp.statut.name() == 'EN_COURS'} ? 'bg-info' : 'bg-warning'))"
-                                                  th:text="${imp.statut}">-</span>
-                                        </td>
-                                        <td class="small text-muted" th:text="${#temporals.format(imp.dateImport, 'dd/MM/yy HH:mm')}">-</td>
-                                    </tr>
-                                    <tr th:if="${#lists.isEmpty(imports)}">
-                                        <td colspan="6" class="text-center text-muted py-5">
-                                            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
-                                            Aucun import effectué
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label fw-semibold" style="font-size:12px">ANNÉE</label>
+                <input type="number" class="form-control" name="annee"
+                       th:value="${anneeCourante}" min="2000" max="2099" required>
+              </div>
+              <div class="col-6">
+                <label class="form-label fw-semibold" style="font-size:12px">MOIS</label>
+                <select class="form-select" name="mois" required>
+                  <option value="1"  th:selected="${moisCourant == 1}">Janvier</option>
+                  <option value="2"  th:selected="${moisCourant == 2}">Février</option>
+                  <option value="3"  th:selected="${moisCourant == 3}">Mars</option>
+                  <option value="4"  th:selected="${moisCourant == 4}">Avril</option>
+                  <option value="5"  th:selected="${moisCourant == 5}">Mai</option>
+                  <option value="6"  th:selected="${moisCourant == 6}">Juin</option>
+                  <option value="7"  th:selected="${moisCourant == 7}">Juillet</option>
+                  <option value="8"  th:selected="${moisCourant == 8}">Août</option>
+                  <option value="9"  th:selected="${moisCourant == 9}">Septembre</option>
+                  <option value="10" th:selected="${moisCourant == 10}">Octobre</option>
+                  <option value="11" th:selected="${moisCourant == 11}">Novembre</option>
+                  <option value="12" th:selected="${moisCourant == 12}">Décembre</option>
+                </select>
+              </div>
             </div>
+
+            <button id="submitBtn" type="submit" class="btn btn-primary w-100">
+              <span id="btnText"><i class="fas fa-upload me-1"></i>Lancer l'import</span>
+              <span id="btnSpinner" class="d-none">
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>Traitement en cours&#8230;
+              </span>
+            </button>
+          </form>
         </div>
-    </section>
-</head>
+      </div>
+
+      <!-- Résultat du dernier import -->
+      <div th:if="${dernierImport}" class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-info"></i>Résultat</h6>
+        </div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-0" style="font-size:13px">
+            <li><i class="fas fa-database me-2 text-secondary"></i>Stock : <strong th:text="${dernierImport.nbStock}"></strong></li>
+            <li><i class="fas fa-user-plus me-2 text-success"></i>Nouvelles : <strong th:text="${dernierImport.nbNouvelles}"></strong></li>
+            <li><i class="fas fa-exclamation-triangle me-2 text-danger"></i>Impayés : <strong th:text="${dernierImport.nbImpaYesDetectes}"></strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historique des imports -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold">
+            <i class="fas fa-history me-2 text-secondary"></i>Historique des imports
+            <span class="badge bg-secondary ms-1" th:text="${imports.size()}"></span>
+          </h6>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Période</th>
+                <th>Fichier</th>
+                <th>Stock</th>
+                <th>Nouvelles</th>
+                <th>Statut</th>
+                <th>Date import</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="imp : ${imports}">
+                <td>
+                  <span class="badge bg-primary"
+                        th:text="${imp.mois + '/' + imp.annee}"></span>
+                </td>
+                <td class="text-truncate" style="max-width:180px" th:text="${imp.nomFichier}"></td>
+                <td th:text="${imp.nbStock}"></td>
+                <td th:text="${imp.nbNouvelles}"></td>
+                <td>
+                  <span class="badge"
+                        th:classappend="${imp.statut.name() == 'SUCCES'}   ? 'bg-success' :
+                                        (${imp.statut.name() == 'ECHEC'}   ? 'bg-danger'  :
+                                        (${imp.statut.name() == 'PARTIEL'} ? 'bg-warning' : 'bg-secondary'))"
+                        th:text="${imp.statut}"></span>
+                </td>
+                <td style="font-size:12px"
+                    th:text="${imp.dateImport != null ? #temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm') : '-'}"></td>
+                <td>
+                  <div class="d-flex gap-1">
+                    <a th:href="@{/import/{id}(id=${imp.id})}"
+                       class="btn btn-sm btn-outline-primary py-0 px-2" title="Voir le détail">
+                      <i class="fas fa-eye"></i>
+                    </a>
+                    <form th:action="@{/import/{id}/supprimer(id=${imp.id})}" method="post" class="d-inline"
+                          sec:authorize="hasRole('ROLE_ADMIN')"
+                          onsubmit="return confirm('Supprimer cet import et toutes ses données ?')">
+                      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                      <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              <tr th:if="${imports.empty}">
+                <td colspan="7" class="text-center text-muted py-4">
+                  <i class="fas fa-inbox fa-2x mb-2 d-block"></i>Aucun import &#8212; utilisez le formulaire ci-contre
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    document.getElementById('importForm').addEventListener('submit', function() {
+      document.getElementById('btnText').classList.add('d-none');
+      document.getElementById('btnSpinner').classList.remove('d-none');
+      document.getElementById('submitBtn').disabled = true;
+    });
+  </script>
+
+</section>
+</body>
 </html>

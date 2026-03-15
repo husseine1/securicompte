@@ -3,6 +3,9 @@ package com.securicompte.repository;
 import com.securicompte.entity.Souscription;
 import com.securicompte.enums.TypeSouscription;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.util.List;
@@ -13,4 +16,14 @@ public interface SouscriptionRepository extends JpaRepository<Souscription, Long
     List<Souscription> findByClientIdOrderByDatSouscriptionAsc(Long clientId);
     boolean existsByClientIdAndDatSouscriptionAndTypeSouscription(
         Long clientId, LocalDate datSouscription, TypeSouscription type);
+
+    @Query("SELECT CONCAT(CAST(s.client.id AS string), '_', CAST(s.datSouscription AS string), '_', s.typeSouscription) FROM Souscription s WHERE s.typeSouscription = :type")
+    List<String> findExistingKeys(@Param("type") TypeSouscription type);
+
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM Souscription s WHERE s.importFichier.id = :importFichierId")
+    void deleteByImportFichierId(@Param("importFichierId") Long importFichierId);
+
+    @Query("SELECT DISTINCT s.client.id FROM Souscription s WHERE s.datSouscription <= :date")
+    List<Long> findClientIdsWithSouscriptionBefore(@Param("date") LocalDate date);
 }

@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,10 +24,7 @@ public class ImpayeService {
 
     @Transactional(readOnly = true)
     public Page<ImpayeDto> getImpaYesWithFilters(FiltreImpayeDto filtre) {
-        PageRequest pageRequest = PageRequest.of(
-            filtre.getPage(), filtre.getSize(),
-            Sort.by(Sort.Direction.DESC, "annee", "mois")
-        );
+        PageRequest pageRequest = PageRequest.of(filtre.getPage(), filtre.getSize());
 
         Page<Impaye> impayes = impayeRepository.findByFilters(
             filtre.getAnnee(),
@@ -62,19 +58,21 @@ public class ImpayeService {
 
         List<StatMoisDto> statsParMois = impayeRepository.countImpaYesParMois().stream()
             .limit(12)
+            .filter(row -> row[0] != null && row[1] != null)
             .map(row -> StatMoisDto.builder()
-                .annee((Integer) row[0])
-                .mois((Integer) row[1])
-                .moisNom(getMoisNom((Integer) row[1]))
-                .nbImpayes((Long) row[2])
+                .annee(((Number) row[0]).intValue())
+                .mois(((Number) row[1]).intValue())
+                .moisNom(getMoisNom(((Number) row[1]).intValue()))
+                .nbImpayes(row[2] != null ? ((Number) row[2]).longValue() : 0L)
                 .build())
             .collect(Collectors.toList());
 
         List<StatAgenceDto> statsParAgence = impayeRepository.countImpaYesParAgence(null).stream()
             .limit(10)
+            .filter(row -> row[1] != null)
             .map(row -> StatAgenceDto.builder()
                 .agence(row[0] != null ? row[0].toString() : "Non défini")
-                .nbImpayes((Long) row[1])
+                .nbImpayes(((Number) row[1]).longValue())
                 .build())
             .collect(Collectors.toList());
 
