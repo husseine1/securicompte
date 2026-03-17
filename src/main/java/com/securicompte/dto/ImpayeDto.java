@@ -18,6 +18,9 @@ public class ImpayeDto {
     private String moisNom;
     private StatutImpaye statut;
     private BigDecimal montantDu;
+    private String securicompte;
     private LocalDateTime dateDetection;
     private LocalDateTime dateRegularisation;
+    private String regularisePar;
+    private String commentaire;
 }

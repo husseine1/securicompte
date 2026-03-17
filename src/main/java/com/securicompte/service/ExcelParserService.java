@@ -60,9 +60,9 @@ public class ExcelParserService {
             if (sheetStock == null)
                 throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable dans le fichier.");
 
-            List<Map<String, Object>> nouvelles = parseSheet(sheetNouvelle);
-            List<Map<String, Object>> anciennes = parseSheet(sheetAncienne);
-            List<Map<String, Object>> stock     = parseSheet(sheetStock);
+            List<Map<String, Object>> nouvelles = parseSheet(sheetNouvelle, false);
+            List<Map<String, Object>> anciennes = parseSheet(sheetAncienne, false);
+            List<Map<String, Object>> stock     = parseSheet(sheetStock, true);
 
             log.info("Parsing Excel OK — Nouvelles: {}, Anciennes: {}, Stock: {}",
                 nouvelles.size(), anciennes.size(), stock.size());
@@ -95,7 +95,8 @@ public class ExcelParserService {
             while (iter.hasNext()) {
                 try (java.io.InputStream sheetStream = iter.next()) {
                     String sheetName = iter.getSheetName().toLowerCase().trim();
-                    XlsbRowCollector collector = new XlsbRowCollector();
+                    boolean isStock = SHEETS_STOCK.stream().anyMatch(sheetName::contains);
+                    XlsbRowCollector collector = new XlsbRowCollector(isStock);
                     XSSFBSheetHandler handler = new XSSFBSheetHandler(
                         sheetStream, styles, iter.getXSSFBSheetComments(),
                         sst, collector, new DataFormatter(), false);
@@ -142,6 +143,7 @@ public class ExcelParserService {
     }
 
     private static class XlsbRowCollector implements XSSFBSheetHandler.SheetContentsHandler {
+        private final boolean allowNomFallback;
         private final List<Map<String, Object>> rows = new ArrayList<>();
         private final List<String> headers = new ArrayList<>();
         // En-têtes tentatives pour la ligne courante (avant de confirmer que c'est la ligne d'en-tête)
@@ -149,18 +151,23 @@ public class ExcelParserService {
         private Map<String, Object> currentRow;
         private boolean headerFound = false;
         private boolean currentRowHasClientCol = false;
+        private boolean currentRowHasNomCol = false;
+
+        XlsbRowCollector(boolean allowNomFallback) { this.allowNomFallback = allowNomFallback; }
+        XlsbRowCollector() { this(false); }
 
         @Override
         public void startRow(int rowNum) {
             currentRow = new LinkedHashMap<>();
             pendingHeaders.clear();
             currentRowHasClientCol = false;
+            currentRowHasNomCol = false;
         }
 
         @Override
         public void endRow(int rowNum) {
             if (!headerFound) {
-                if (currentRowHasClientCol) {
+                if (currentRowHasClientCol || (allowNomFallback && currentRowHasNomCol)) {
                     // Cette ligne est la vraie ligne d'en-tête
                     headers.addAll(pendingHeaders);
                     headerFound = true;
@@ -168,7 +175,9 @@ public class ExcelParserService {
                 // Sinon c'est une ligne de titre/métadonnée, on l'ignore
             } else if (currentRow != null) {
                 Object clientVal = currentRow.get("CLIENT");
-                if (clientVal != null && !clientVal.toString().isBlank()) {
+                Object nomVal    = currentRow.get("NOM");
+                if ((clientVal != null && !clientVal.toString().isBlank()) ||
+                    (allowNomFallback && nomVal != null && !nomVal.toString().isBlank())) {
                     rows.add(currentRow);
                 }
             }
@@ -185,6 +194,7 @@ public class ExcelParserService {
                 String colName = formattedValue != null ? formattedValue.trim().toUpperCase() : "COL_" + col;
                 pendingHeaders.set(col, colName);
                 if ("CLIENT".equals(colName)) currentRowHasClientCol = true;
+                if ("NOM".equals(colName)) currentRowHasNomCol = true;
             } else if (currentRow != null && col < headers.size()) {
                 if (formattedValue != null && !formattedValue.isBlank()) {
                     currentRow.put(headers.get(col), formattedValue.trim());
@@ -201,21 +211,23 @@ public class ExcelParserService {
 
     /**
      * Parse une feuille et retourne une liste de Map<colonne, valeur>.
+     * allowNomFallback : si true, accepte aussi une ligne d'en-tête sans CLIENT (mais avec NOM)
+     *                    et conserve les lignes sans CLIENT mais avec NOM non vide.
+     *                    Doit être true uniquement pour la feuille stock.
      */
-    private List<Map<String, Object>> parseSheet(Sheet sheet) {
+    private List<Map<String, Object>> parseSheet(Sheet sheet, boolean allowNomFallback) {
         List<Map<String, Object>> rows = new ArrayList<>();
         List<String> headers = new ArrayList<>();
         boolean headerFound = false;
 
         for (Row row : sheet) {
             if (!headerFound) {
-                // Chercher la ligne qui contient la colonne "CLIENT"
                 List<String> candidats = new ArrayList<>();
                 for (Cell cell : row) {
                     String header = getCellStringValue(cell);
                     candidats.add(header != null ? header.trim().toUpperCase() : "COL_" + cell.getColumnIndex());
                 }
-                if (candidats.contains("CLIENT")) {
+                if (candidats.contains("CLIENT") || (allowNomFallback && candidats.contains("NOM"))) {
                     headers.addAll(candidats);
                     headerFound = true;
                 }
@@ -229,9 +241,10 @@ public class ExcelParserService {
                 rowData.put(headers.get(i), parseCellValue(cell));
             }
 
-            // Ne garder que si CLIENT n'est pas vide
             Object clientVal = rowData.get("CLIENT");
-            if (clientVal != null && !clientVal.toString().isBlank()) {
+            Object nomVal    = rowData.get("NOM");
+            if ((clientVal != null && !clientVal.toString().isBlank()) ||
+                (allowNomFallback && nomVal != null && !nomVal.toString().isBlank())) {
                 rows.add(rowData);
             }
         }

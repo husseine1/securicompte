@@ -35,7 +35,7 @@ public class ExcelExportService {
             String[] headers = {
                 "N°", "Numéro Client", "Nom Client", "Agence", "Gestionnaire",
                 "Zone", "Année", "Mois", "Statut", "Montant Dû",
-                "Date Détection", "Date Régularisation"
+                "Securicompte", "Date Détection", "Date Régularisation"
             };
 
             Row headerRow = sheet.createRow(0);
@@ -62,10 +62,11 @@ public class ExcelExportService {
                 createCell(row, 7, impaye.getMoisNom(), rowStyle);
                 createCell(row, 8, impaye.getStatut() != null ? impaye.getStatut().getLibelle() : "", rowStyle);
                 createCell(row, 9, impaye.getMontantDu(), rowStyle);
-                createCell(row, 10,
+                createCell(row, 10, impaye.getSecuricompte() != null ? impaye.getSecuricompte() : "", rowStyle);
+                createCell(row, 11,
                     impaye.getDateDetection() != null ? impaye.getDateDetection().format(DATE_FMT) : "",
                     rowStyle);
-                createCell(row, 11,
+                createCell(row, 12,
                     impaye.getDateRegularisation() != null ? impaye.getDateRegularisation().format(DATE_FMT) : "",
                     rowStyle);
             }

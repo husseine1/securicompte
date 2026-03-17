@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -83,14 +84,15 @@ public class ImportService {
                 }
                 Map<String, Client> cache = construireClientCache(
                     excelData.nouvelles(), excelData.anciennes(), excelData.stock());
-                int nn = importerSouscriptionsBulk(
+                int[] resNn = importerSouscriptionsBulk(
                     excelData.nouvelles(), TypeSouscription.NOUVELLE, importFichier, cache);
-                int na = importerSouscriptionsBulk(
+                int[] resNa = importerSouscriptionsBulk(
                     excelData.anciennes(), TypeSouscription.ANCIENNE, importFichier, cache);
-                int ns = importerStockBulk(
+                int[] resNs = importerStockBulk(
                     excelData.stock(), annee, mois, importFichier, cache);
                 int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
-                return new int[]{nn, na, ns, ni};
+                int nbErreurs = resNn[1] + resNa[1] + resNs[1];
+                return new int[]{resNn[0], resNa[0], resNs[0], ni, nbErreurs};
             });
 
             // Tx3 : marquer SUCCES
@@ -101,12 +103,13 @@ public class ImportService {
                 f.setNbNouvelles(c[0]);
                 f.setNbAnciennes(c[1]);
                 f.setNbStock(c[2]);
+                f.setNbErreurs(c[4]);
                 f.setDateFinImport(LocalDateTime.now());
                 return importFichierRepository.save(f);
             });
 
-            log.info("Import terminé avec succès: Nouvelles={}, Anciennes={}, Stock={}, Impayés={}",
-                c[0], c[1], c[2], c[3]);
+            log.info("Import terminé avec succès: Nouvelles={}, Anciennes={}, Stock={}, Impayés={}, Erreurs={}",
+                c[0], c[1], c[2], c[3], c[4]);
 
             ImportFichier saved = importFichierRepository.findById(importId).orElseThrow();
             return ImportResultDto.builder()
@@ -119,7 +122,7 @@ public class ImportService {
                 .nbAnciennes(c[1])
                 .nbStock(c[2])
                 .nbImpaYesDetectes(c[3])
-                .nbErreurs(0)
+                .nbErreurs(c[4])
                 .dateImport(saved.getDateImport())
                 .succes(true)
                 .build();
@@ -209,15 +212,31 @@ public class ImportService {
 
     /**
      * Importe les souscriptions en bulk (nouvelles ou anciennes).
+     * Retourne int[]{nbImportées, nbErreurs}.
      */
-    private int importerSouscriptionsBulk(List<Map<String, Object>> rows,
-                                           TypeSouscription type,
-                                           ImportFichier importFichier,
-                                           Map<String, Client> clientCache) {
-        // Charger toutes les clés existantes pour ce type en une seule requête
-        Set<String> existingKeys = new HashSet<>(souscriptionRepository.findExistingKeys(type));
+    private int[] importerSouscriptionsBulk(List<Map<String, Object>> rows,
+                                              TypeSouscription type,
+                                              ImportFichier importFichier,
+                                              Map<String, Client> clientCache) {
+        // Charger uniquement les clés des clients présents dans ce fichier (pas tout l'historique)
+        List<Long> candidateIds = rows.stream()
+            .map(r -> excelParserService.getString(r, "CLIENT"))
+            .filter(Objects::nonNull)
+            .map(clientCache::get)
+            .filter(Objects::nonNull)
+            .map(com.securicompte.entity.Client::getId)
+            .distinct()
+            .collect(Collectors.toList());
+
+        Set<String> existingKeys = new HashSet<>();
+        int batchSizeIds = 5000;
+        for (int i = 0; i < candidateIds.size(); i += batchSizeIds) {
+            List<Long> batch = candidateIds.subList(i, Math.min(i + batchSizeIds, candidateIds.size()));
+            existingKeys.addAll(souscriptionRepository.findExistingKeysForClients(type, batch));
+        }
 
         List<Souscription> toSave = new ArrayList<>();
+        int erreurs = 0;
         for (Map<String, Object> row : rows) {
             try {
                 String num = excelParserService.getString(row, "CLIENT");
@@ -232,26 +251,37 @@ public class ImportService {
                     existingKeys.add(key);
                 }
             } catch (Exception e) {
+                erreurs++;
                 log.warn("Erreur import souscription ligne: {}", e.getMessage());
             }
         }
         souscriptionRepository.saveAll(toSave);
-        return toSave.size();
+        return new int[]{toSave.size(), erreurs};
     }
 
     /**
      * Importe le stock mensuel en bulk.
+     * Fallback : si la colonne CLIENT est absente, on tente la correspondance par NOM.
+     * Retourne int[]{nbImportés, nbErreurs}.
      */
-    private int importerStockBulk(List<Map<String, Object>> rows, int annee, int mois,
-                                   ImportFichier importFichier,
-                                   Map<String, Client> clientCache) {
+    private int[] importerStockBulk(List<Map<String, Object>> rows, int annee, int mois,
+                                     ImportFichier importFichier,
+                                     Map<String, Client> clientCache) {
+        Map<String, Client> cacheParNom = construireCacheParNom(rows, clientCache);
+
         Set<Long> seen = new HashSet<>();
         List<StockMensuel> toSave = new ArrayList<>();
+        int erreurs = 0;
         for (Map<String, Object> row : rows) {
             try {
                 String num = excelParserService.getString(row, "CLIENT");
-                if (num == null) continue;
-                Client client = clientCache.get(num);
+                Client client = null;
+                if (num != null) {
+                    client = clientCache.get(num);
+                } else {
+                    String nom = excelParserService.getString(row, "NOM");
+                    if (nom != null) client = cacheParNom.get(nom.toUpperCase());
+                }
                 if (client == null) continue;
 
                 if (!seen.contains(client.getId())) {
@@ -259,11 +289,47 @@ public class ImportService {
                     seen.add(client.getId());
                 }
             } catch (Exception e) {
+                erreurs++;
                 log.warn("Erreur import stock ligne: {}", e.getMessage());
             }
         }
         stockMensuelRepository.saveAll(toSave);
-        return toSave.size();
+        return new int[]{toSave.size(), erreurs};
+    }
+
+    /**
+     * Construit un cache secondaire Map<NOM_EN_MAJUSCULES, Client> pour
+     * les lignes de stock sans numéro client.
+     */
+    private Map<String, Client> construireCacheParNom(List<Map<String, Object>> stockRows,
+                                                       Map<String, Client> cacheExistant) {
+        Map<String, Client> cacheParNom = new HashMap<>();
+        // Indexer d'abord les clients déjà chargés
+        cacheExistant.values().forEach(c -> {
+            if (c.getNom() != null) cacheParNom.put(c.getNom().toUpperCase(), c);
+        });
+
+        // Collecter les noms des lignes sans CLIENT absents du cache
+        Set<String> nomsManquants = new HashSet<>();
+        for (Map<String, Object> row : stockRows) {
+            String num = excelParserService.getString(row, "CLIENT");
+            if (num == null) {
+                String nom = excelParserService.getString(row, "NOM");
+                if (nom != null && !cacheParNom.containsKey(nom.toUpperCase())) {
+                    nomsManquants.add(nom);
+                }
+            }
+        }
+
+        // Charger en bulk depuis la DB
+        if (!nomsManquants.isEmpty()) {
+            clientRepository.findByNomIn(nomsManquants)
+                .forEach(c -> cacheParNom.put(c.getNom().toUpperCase(), c));
+            log.info("Cache par nom: {} noms recherchés, {} clients trouvés",
+                nomsManquants.size(),
+                nomsManquants.stream().filter(n -> cacheParNom.containsKey(n.toUpperCase())).count());
+        }
+        return cacheParNom;
     }
 
     private boolean clientAChange(Client client, Map<String, Object> row) {

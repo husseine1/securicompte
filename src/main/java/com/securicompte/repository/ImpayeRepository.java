@@ -23,7 +23,7 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     List<Impaye> findByClientIdOrderByAnneeDescMoisDesc(Long clientId);
 
     @Query(value = """
-        SELECT i FROM Impaye i JOIN FETCH i.client c
+        SELECT i FROM Impaye i JOIN FETCH i.client c LEFT JOIN FETCH i.souscription s
         WHERE (:annee IS NULL OR i.annee = :annee)
           AND (:mois  IS NULL OR i.mois  = :mois)
           AND (:agence IS NULL OR i.agenceLib = :agence)
@@ -49,7 +49,7 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     );
 
     @Query("""
-        SELECT i FROM Impaye i JOIN FETCH i.client c
+        SELECT i FROM Impaye i JOIN FETCH i.client c LEFT JOIN FETCH i.souscription s
         WHERE (:annee IS NULL OR i.annee = :annee)
           AND (:mois  IS NULL OR i.mois  = :mois)
           AND (:agence IS NULL OR i.agenceLib = :agence)

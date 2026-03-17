@@ -1,6 +1,7 @@
 package com.securicompte.controller;
 
 import com.securicompte.dto.ImportResultDto;
+import com.securicompte.entity.ImportFichier;
 import com.securicompte.entity.User;
 import com.securicompte.service.ImportService;
 import lombok.RequiredArgsConstructor;
@@ -83,8 +84,11 @@ public class ImportController {
     @PreAuthorize("hasRole('ADMIN')")
     public String supprimerImport(@PathVariable Long id, RedirectAttributes redirectAttributes) {
         try {
+            ImportFichier imp = importService.getImportById(id);
+            String periode = imp.getMois() + "/" + imp.getAnnee();
             importService.supprimerImport(id);
-            redirectAttributes.addFlashAttribute("succes", "Import supprimé avec succès.");
+            redirectAttributes.addFlashAttribute("succes",
+                "Suppression réussie — l'import " + periode + " et toutes ses données ont été retirés.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("erreur", "Erreur lors de la suppression : " + e.getMessage());
         }

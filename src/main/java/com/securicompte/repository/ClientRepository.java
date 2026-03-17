@@ -16,6 +16,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     Optional<Client> findByNumeroClient(String numeroClient);
     boolean existsByNumeroClient(String numeroClient);
     List<Client> findByNumeroClientIn(Collection<String> numeroClients);
+    List<Client> findByNomIn(Collection<String> noms);
 
     @Query("""
         SELECT c FROM Client c

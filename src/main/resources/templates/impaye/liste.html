@@ -22,7 +22,7 @@
           <select class="form-select form-select-sm" name="mois">
             <option value="">Tous</option>
             <option th:each="m : ${moisList}" th:value="${m[0]}" th:text="${m[1]}"
-                    th:selected="${filtre?.mois != null and filtre.mois == #numbers.parseInt(m[0])}"></option>
+                    th:selected="${filtre?.mois != null and filtre.mois.toString() == m[0]}"></option>
           </select>
         </div>
         <div class="col-md-2">
@@ -81,7 +81,7 @@
             <tr>
               <th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th>
               <th>Période</th><th>Statut</th><th>Montant dû</th>
-              <th>Détecté le</th><th>Régularisé le</th><th></th>
+              <th>Détecté le</th><th>Régularisé le</th><th>Régularisé par</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -107,15 +107,28 @@
                   th:text="${imp.dateDetection != null ? #temporals.format(imp.dateDetection,'dd/MM/yyyy') : '-'}"></td>
               <td style="font-size:12px"
                   th:text="${imp.dateRegularisation != null ? #temporals.format(imp.dateRegularisation,'dd/MM/yyyy') : '-'}"></td>
+              <td style="font-size:12px" th:text="${imp.regularisePar ?: '-'}"></td>
               <td>
-                <a th:href="@{/clients/{id}(id=${imp.clientId})}"
-                   class="btn btn-sm btn-outline-primary py-0 px-2">
-                  <i class="fas fa-eye"></i>
-                </a>
+                <div class="d-flex gap-1">
+                  <a th:href="@{/clients/{id}(id=${imp.clientId})}"
+                     class="btn btn-sm btn-outline-primary py-0 px-2" title="Voir client">
+                    <i class="fas fa-eye"></i>
+                  </a>
+                  <button th:if="${imp.statut?.name() == 'IMPAYE'}"
+                          class="btn btn-sm btn-outline-success py-0 px-2 btn-regulariser"
+                          th:data-id="${imp.id}" title="Régulariser">
+                    <i class="fas fa-check"></i>
+                  </button>
+                  <button th:if="${imp.statut?.name() == 'REGULARISE' or imp.statut?.name() == 'LITIGE'}"
+                          class="btn btn-sm btn-outline-danger py-0 px-2 btn-marquer-impaye"
+                          th:data-id="${imp.id}" title="Remettre en impayé">
+                    <i class="fas fa-undo"></i>
+                  </button>
+                </div>
               </td>
             </tr>
             <tr th:if="${impayes.empty}">
-              <td colspan="10" class="text-center text-muted py-5">
+              <td colspan="11" class="text-center text-muted py-5">
                 <i class="fas fa-check-circle fa-3x text-success mb-2 d-block"></i>
                 Aucun impayé trouvé pour ces critères.
               </td>
@@ -147,17 +160,33 @@
   </div>
 
   <script>
-  // Régularisation rapide via AJAX
+  const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
+  const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
+
   document.querySelectorAll('.btn-regulariser').forEach(btn => {
     btn.addEventListener('click', function() {
       const id = this.dataset.id;
       if (!confirm('Confirmer la régularisation de cet impayé ?')) return;
       fetch(`/impayes/${id}/regulariser`, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="_csrf"]')?.content || '' }
+        headers: { [csrfHeader]: csrfToken }
       }).then(r => r.text()).then(res => {
         if (res === 'OK') location.reload();
         else alert('Erreur lors de la régularisation.');
+      });
+    });
+  });
+
+  document.querySelectorAll('.btn-marquer-impaye').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.dataset.id;
+      if (!confirm('Remettre cet enregistrement en statut IMPAYÉ ?')) return;
+      fetch(`/impayes/${id}/marquer-impaye`, {
+        method: 'POST',
+        headers: { [csrfHeader]: csrfToken }
+      }).then(r => r.text()).then(res => {
+        if (res === 'OK') location.reload();
+        else alert('Erreur lors de la mise à jour.');
       });
     });
   });

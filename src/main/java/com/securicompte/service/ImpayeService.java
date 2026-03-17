@@ -52,7 +52,6 @@ public class ImpayeService {
 
     @Transactional(readOnly = true)
     public DashboardStatsDto getDashboardStats() {
-        long totalClients = 0; // à remplir
         long totalImpayes = impayeRepository.countImpayes();
         long totalClientsAvecImpayes = impayeRepository.countClientsAvecImpayes();
 
@@ -81,16 +80,30 @@ public class ImpayeService {
             .totalClientsAvecImpayes(totalClientsAvecImpayes)
             .statsParMois(statsParMois)
             .statsParAgence(statsParAgence)
-            .build();
+            .build(); // totalClients et totalImportsFaits sont renseignés par DashboardController
     }
 
     @Transactional
-    public boolean regulariser(Long impayeId, String commentaire) {
+    public boolean regulariser(Long impayeId, String commentaire, com.securicompte.entity.User regularisePar) {
         return impayeRepository.findById(impayeId).map(impaye -> {
             impaye.setStatut(StatutImpaye.REGULARISE);
             impaye.setDateRegularisation(java.time.LocalDateTime.now());
             impaye.setCommentaire(commentaire);
+            impaye.setRegularisePar(regularisePar);
             impayeRepository.save(impaye);
+            return true;
+        }).orElse(false);
+    }
+
+    @Transactional
+    public boolean marquerImpaye(Long impayeId, com.securicompte.entity.User modifiePar) {
+        return impayeRepository.findById(impayeId).map(impaye -> {
+            impaye.setStatut(StatutImpaye.IMPAYE);
+            impaye.setDateRegularisation(null);
+            impaye.setRegularisePar(null);
+            impaye.setCommentaire(null);
+            impayeRepository.save(impaye);
+            log.info("Impayé {} remis en statut IMPAYÉ par {}", impayeId, modifiePar.getUsername());
             return true;
         }).orElse(false);
     }

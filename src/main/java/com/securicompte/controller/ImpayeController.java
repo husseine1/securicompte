@@ -11,10 +11,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
+import com.securicompte.entity.User;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -69,8 +71,18 @@ public class ImpayeController {
     @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
     @ResponseBody
     public String regulariser(@PathVariable Long id,
-                               @RequestParam(required = false) String commentaire) {
-        boolean ok = impayeService.regulariser(id, commentaire);
+                               @RequestParam(required = false) String commentaire,
+                               @AuthenticationPrincipal User currentUser) {
+        boolean ok = impayeService.regulariser(id, commentaire, currentUser);
+        return ok ? "OK" : "ERREUR";
+    }
+
+    @PostMapping("/{id}/marquer-impaye")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    @ResponseBody
+    public String marquerImpaye(@PathVariable Long id,
+                                @AuthenticationPrincipal User currentUser) {
+        boolean ok = impayeService.marquerImpaye(id, currentUser);
         return ok ? "OK" : "ERREUR";
     }
 

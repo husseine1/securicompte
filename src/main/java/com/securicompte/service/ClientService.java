@@ -195,8 +195,11 @@ public class ClientService {
             .moisNom(getMoisNom(i.getMois()))
             .statut(i.getStatut())
             .montantDu(i.getMontantDu())
+            .securicompte(i.getSouscription() != null ? i.getSouscription().getSecuricompte() : null)
             .dateDetection(i.getDateDetection())
             .dateRegularisation(i.getDateRegularisation())
+            .regularisePar(i.getRegularisePar() != null ? i.getRegularisePar().getUsername() : null)
+            .commentaire(i.getCommentaire())
             .build();
     }
 
