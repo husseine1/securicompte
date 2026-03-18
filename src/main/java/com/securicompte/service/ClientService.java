@@ -59,11 +59,42 @@ public class ClientService {
 
         List<Souscription> souscriptions = souscriptionRepository.findByClientId(clientId);
         List<Impaye> impayes = impayeRepository.findByClientIdOrderByAnneeDescMoisDesc(clientId);
-        List<HistoriquePaiementDto> historique = construireHistorique(clientId, souscriptions);
+        List<HistoriquePaiementDto> historique = construireHistorique(clientId, souscriptions, impayes);
+        List<StockMensuel> stock = stockMensuelRepository.findByClientIdOrderByAnneeDescMoisDesc(clientId);
 
-        BigDecimal montantTotal = impayes.stream()
-            .filter(i -> i.getStatut() == StatutImpaye.IMPAYE && i.getMontantDu() != null)
-            .map(Impaye::getMontantDu)
+        // Compléter la liste des impayés avec les mois détectés dans l'historique
+        // mais absents de la table impaye (détection manquée)
+        List<ImpayeDto> impayesDtos = completerImpaYesDepuisHistorique(client, impayes, historique);
+
+        // Enrichir les impayés avec securicompte et montantDu depuis la souscription du client
+        // (les impayés créés par détection automatique n'ont pas la souscription liée)
+        Souscription souscriptionRef = souscriptions.stream()
+            .filter(s -> s.getDatSouscription() != null)
+            .max(Comparator.comparing(Souscription::getDatSouscription))
+            .orElse(null);
+        if (souscriptionRef != null) {
+            String numSecuricompte = souscriptionRef.getSecuricompte();
+            BigDecimal montantRef = souscriptionRef.getCommissions();
+            for (ImpayeDto dto : impayesDtos) {
+                if (dto.getSecuricompte() == null && numSecuricompte != null) {
+                    dto.setSecuricompte(numSecuricompte);
+                }
+                if (dto.getMontantDu() == null && montantRef != null) {
+                    dto.setMontantDu(montantRef);
+                }
+            }
+        }
+
+        long nbImpayes = impayesDtos.stream()
+            .filter(i -> i.getStatut() == StatutImpaye.IMPAYE)
+            .count();
+
+        BigDecimal montantTotal = impayesDtos.stream()
+            .filter(i -> i.getStatut() == StatutImpaye.IMPAYE && i.getSecuricompte() != null)
+            .map(i -> {
+                try { return new BigDecimal(i.getSecuricompte().trim()); }
+                catch (NumberFormatException e) { return BigDecimal.ZERO; }
+            })
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return ClientDetailDto.builder()
@@ -76,9 +107,10 @@ public class ClientService {
             .agenceLib(client.getAgenceLib())
             .gestionnaire(client.getGestionnaire())
             .souscriptions(souscriptions.stream().map(this::toSouscriptionDto).collect(Collectors.toList()))
+            .stockMensuel(stock.stream().map(this::toStockDto).collect(Collectors.toList()))
             .historiquePaiements(historique)
-            .impayes(impayes.stream().map(this::toImpayeDto).collect(Collectors.toList()))
-            .nbImpayes((int) impayes.stream().filter(i -> i.getStatut() == StatutImpaye.IMPAYE).count())
+            .impayes(impayesDtos)
+            .nbImpayes((int) nbImpayes)
             .montantTotalDu(montantTotal)
             .build();
     }
@@ -86,7 +118,9 @@ public class ClientService {
     /**
      * Construit l'historique des paiements mois par mois depuis la souscription
      */
-    private List<HistoriquePaiementDto> construireHistorique(Long clientId, List<Souscription> souscriptions) {
+    private List<HistoriquePaiementDto> construireHistorique(Long clientId,
+                                                               List<Souscription> souscriptions,
+                                                               List<Impaye> impayes) {
         if (souscriptions.isEmpty()) return new ArrayList<>();
 
         // Trouver la date de première souscription
@@ -97,6 +131,14 @@ public class ClientService {
             .orElse(null);
 
         if (premiereSouscription == null) return new ArrayList<>();
+
+        // Index des statuts impayés par "annee_mois" pour éviter N+1 requêtes
+        Map<String, StatutImpaye> statutsImpaye = impayes.stream()
+            .collect(Collectors.toMap(
+                i -> i.getAnnee() + "_" + i.getMois(),
+                Impaye::getStatut,
+                (a, b) -> a
+            ));
 
         LocalDate maintenant = LocalDate.now();
         List<HistoriquePaiementDto> historique = new ArrayList<>();
@@ -109,8 +151,6 @@ public class ClientService {
 
             boolean presentDansStock = stockMensuelRepository
                 .existsByClientIdAndAnneeAndMois(clientId, annee, mois);
-
-            // Vérifier si un import existe pour ce mois
             boolean importExiste = importFichierRepository.existsByAnneeAndMois(annee, mois);
 
             String statut;
@@ -119,7 +159,13 @@ public class ClientService {
             } else if (presentDansStock) {
                 statut = "PAYE";
             } else {
-                statut = "IMPAYE";
+                // Utiliser le statut de la table impayé s'il existe
+                StatutImpaye statutDb = statutsImpaye.get(annee + "_" + mois);
+                if (statutDb == StatutImpaye.REGULARISE) {
+                    statut = "REGULARISE";
+                } else {
+                    statut = "IMPAYE";
+                }
             }
 
             historique.add(HistoriquePaiementDto.builder()
@@ -136,6 +182,47 @@ public class ClientService {
         // Ordre décroissant
         Collections.reverse(historique);
         return historique;
+    }
+
+    /**
+     * Complète la liste des impayés DB avec les mois détectés dans l'historique
+     * (absent du stock) mais qui n'ont pas d'enregistrement dans la table impaye.
+     */
+    private List<ImpayeDto> completerImpaYesDepuisHistorique(Client client,
+                                                               List<Impaye> impayesDb,
+                                                               List<HistoriquePaiementDto> historique) {
+        // Clés déjà présentes en base
+        Set<String> clesExistantes = impayesDb.stream()
+            .map(i -> i.getAnnee() + "_" + i.getMois())
+            .collect(Collectors.toSet());
+
+        List<ImpayeDto> resultat = impayesDb.stream()
+            .map(this::toImpayeDto)
+            .collect(Collectors.toList());
+
+        // Ajouter les mois IMPAYÉ de l'historique absents de la table
+        for (HistoriquePaiementDto h : historique) {
+            if ("IMPAYE".equals(h.getStatut()) && !clesExistantes.contains(h.getAnnee() + "_" + h.getMois())) {
+                resultat.add(ImpayeDto.builder()
+                    .clientId(client.getId())
+                    .numeroClient(client.getNumeroClient())
+                    .nomClient(client.getNom())
+                    .agenceLib(client.getAgenceLib())
+                    .gestionnaire(client.getGestionnaire())
+                    .zoneLib(client.getZoneLib())
+                    .annee(h.getAnnee())
+                    .mois(h.getMois())
+                    .moisNom(h.getMoisNom())
+                    .statut(StatutImpaye.IMPAYE)
+                    .build());
+            }
+        }
+
+        // Trier par annee desc, mois desc
+        resultat.sort(Comparator.comparingInt(ImpayeDto::getAnnee).reversed()
+            .thenComparingInt(ImpayeDto::getMois).reversed());
+
+        return resultat;
     }
 
     public List<String> getAgences() {
@@ -165,6 +252,19 @@ public class ClientService {
             .gestionnaire(client.getGestionnaire())
             .nbImpayes((int) nbImpayes)
             .montantTotalDu(montant)
+            .build();
+    }
+
+    private SouscriptionDto toStockDto(StockMensuel s) {
+        return SouscriptionDto.builder()
+            .annee(s.getAnnee())
+            .mois(s.getMois())
+            .moisNom(getMoisNom(s.getMois()))
+            .securicompte(s.getSecuricompte())
+            .commissions(s.getCommissions())
+            .libelPackage(s.getLibelPackage())
+            .optionSecuricompte(s.getOptionSecuricompte())
+            .datSouscription(s.getDatSouscription())
             .build();
     }
 

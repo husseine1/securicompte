@@ -78,7 +78,7 @@
           <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
               <table class="table table-hover mb-0">
-                <thead><tr><th>Période</th><th>Statut</th><th>Securicompte</th><th>Montant</th><th>Détecté</th><th>Régularisé</th></tr></thead>
+                <thead><tr><th>Période</th><th>Statut</th><th>Securicompte</th><th>Commission</th><th>Détecté</th><th>Régularisé</th></tr></thead>
                 <tbody>
                   <tr th:each="imp : ${client.impayes}">
                     <td><span class="badge bg-secondary" th:text="${imp.moisNom + ' ' + imp.annee}"></span></td>
@@ -114,12 +114,14 @@
                 <th:block th:each="h : ${client.historiquePaiements}">
                   <div class="text-center rounded p-2" style="min-width:65px"
                        th:style="${h.statut == 'PAYE'} ? 'background:#d1fae5;color:#065f46' :
-                                 (${h.statut == 'IMPAYE'} ? 'background:#fee2e2;color:#991b1b' : 'background:#f3f4f6;color:#6b7280')">
+                                 (${h.statut == 'IMPAYE'} ? 'background:#fee2e2;color:#991b1b' :
+                                 (${h.statut == 'REGULARISE'} ? 'background:#dbeafe;color:#1e40af' : 'background:#f3f4f6;color:#6b7280'))">
                     <div style="font-size:10px;font-weight:700" th:text="${h.moisNom}"></div>
                     <div style="font-size:10px" th:text="${h.annee}"></div>
                     <i style="font-size:10px"
                        th:classappend="${h.statut == 'PAYE'} ? 'fas fa-check' :
-                                      (${h.statut == 'IMPAYE'} ? 'fas fa-times' : 'fas fa-minus')"></i>
+                                      (${h.statut == 'IMPAYE'} ? 'fas fa-times' :
+                                      (${h.statut == 'REGULARISE'} ? 'fas fa-check-double' : 'fas fa-minus'))"></i>
                   </div>
                 </th:block>
                 <div th:if="${client.historiquePaiements.empty}" class="text-muted py-3">
@@ -129,31 +131,44 @@
               <div class="d-flex gap-3 mt-3" style="font-size:12px">
                 <span><span class="badge" style="background:#d1fae5;color:#065f46">✓</span> Payé</span>
                 <span><span class="badge" style="background:#fee2e2;color:#991b1b">✗</span> Impayé</span>
+                <span><span class="badge" style="background:#dbeafe;color:#1e40af">✓✓</span> Régularisé</span>
                 <span><span class="badge" style="background:#f3f4f6;color:#6b7280">—</span> Non importé</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Souscriptions -->
+        <!-- Stock mensuel -->
         <div class="tab-pane fade" id="tab-souscriptions">
           <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
               <table class="table table-hover mb-0">
-                <thead><tr><th>Date souscription</th><th>Type</th><th>Package</th><th>Option</th><th>Securicompte</th><th>Commission</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Période</th>
+                    <th>Date souscription</th>
+                    <th>Securicompte</th>
+                    <th>Package</th>
+                    <th>Option</th>
+                    <th>Commission</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  <tr th:each="s : ${client.souscriptions}">
-                    <td style="font-size:13px"
+                  <tr th:each="s : ${client.stockMensuel}">
+                    <td>
+                      <span class="badge bg-secondary"
+                            th:text="${s.moisNom + ' ' + s.annee}"></span>
+                    </td>
+                    <td style="font-size:12px"
                         th:text="${s.datSouscription != null ? #temporals.format(s.datSouscription,'dd/MM/yyyy') : '-'}"></td>
-                    <td><span class="badge" th:classappend="${s.typeSouscription == 'Nouvelle souscription'} ? 'bg-info' : 'bg-secondary'"
-                              th:text="${s.typeSouscription}"></span></td>
+                    <td style="font-size:12px;font-weight:600" th:text="${s.securicompte ?: '-'}"></td>
                     <td style="font-size:12px" th:text="${s.libelPackage ?: '-'}"></td>
                     <td style="font-size:12px" th:text="${s.optionSecuricompte ?: '-'}"></td>
-                    <td style="font-size:12px;font-weight:600" th:text="${s.securicompte ?: '-'}"></td>
-                    <td style="font-size:12px" th:text="${s.commissions != null ? s.commissions + ' FCFA' : '-'}"></td>
+                    <td style="font-size:12px"
+                        th:text="${s.commissions != null ? s.commissions + ' FCFA' : '-'}"></td>
                   </tr>
-                  <tr th:if="${client.souscriptions.empty}">
-                    <td colspan="6" class="text-center text-muted py-3">Aucune souscription</td>
+                  <tr th:if="${client.stockMensuel.empty}">
+                    <td colspan="6" class="text-center text-muted py-3">Aucune donnée de stock disponible</td>
                   </tr>
                 </tbody>
               </table>

@@ -96,8 +96,7 @@ public class ImportController {
     }
 
     @GetMapping("/historique")
-    public String historique(Model model) {
-        model.addAttribute("imports", importService.getTousLesImports());
-        return "import/historique";
+    public String historique() {
+        return "redirect:/import";
     }
 }

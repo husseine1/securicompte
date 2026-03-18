@@ -15,6 +15,7 @@ public class ClientDetailDto {
     private String agenceLib;
     private String gestionnaire;
     private List<SouscriptionDto> souscriptions;
+    private List<SouscriptionDto> stockMensuel;
     private List<HistoriquePaiementDto> historiquePaiements;
     private List<ImpayeDto> impayes;
     private int nbImpayes;
