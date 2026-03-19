@@ -5,7 +5,8 @@
       "Bash(mvn spring-boot:run)",
       "Bash(PGPASSWORD=postgres psql -U postgres -d securicompte_db -c \"SELECT username, password FROM users;\")",
       "Bash(PGPASSWORD=postgres psql -U postgres -d securicompte_db << 'EOF':*)",
-      "Bash(cmd //c \"taskkill /PID 186544 /F\")"
+      "Bash(cmd //c \"taskkill /PID 186544 /F\")",
+      "Bash(cd \"C:\\\\Users\\\\DELL XPS\\\\Downloads\\\\securicompte\" && mvn compile -q 2>&1 | tail -40)"
     ]
   }
 }
