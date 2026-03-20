@@ -22,9 +22,14 @@ import java.util.stream.Collectors;
  * Service de détection automatique des impayés.
  *
  * ALGORITHME :
- * Pour chaque client ayant souscrit avant ou pendant le mois M :
- *   - S'il EST dans le stock du mois M  → PAYÉ (régulariser ses impayés précédents)
+ * Pour chaque client ayant souscrit avant ou pendant le mois M (hors sinistre) :
+ *   - S'il EST dans le stock du mois M  → PAYÉ (chaque mois est indépendant)
  *   - S'il N'EST PAS dans le stock du mois M → IMPAYÉ enregistré
+ *
+ * Règles métier :
+ *   - La souscription est prise en compte dès le mois de signature (même en cours de mois)
+ *   - Un paiement ne régularise PAS les impayés des mois précédents
+ *   - Les clients avec sinistre sont exclus de la détection
  *
  * Toutes les opérations sont faites en bulk (5-6 requêtes au total).
  */
