@@ -50,6 +50,9 @@ public class Client {
     @Column(name = "gestionnaire", length = 200)
     private String gestionnaire;
 
+    @Column(name = "date_sinistre")
+    private LocalDate dateSinistre;
+
     @Column(name = "actif")
     @Builder.Default
     private Boolean actif = true;

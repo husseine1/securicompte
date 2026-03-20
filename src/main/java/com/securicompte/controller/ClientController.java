@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Controller
 @RequestMapping("/clients")
@@ -40,5 +41,20 @@ public class ClientController {
         ClientDetailDto client = clientService.getClientDetail(id);
         model.addAttribute("client", client);
         return "client/detail";
+    }
+
+    @PostMapping("/{id}/sinistre")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_AGENT')")
+    public String enregistrerSinistre(
+            @PathVariable Long id,
+            @RequestParam(required = false) String dateSinistre,
+            RedirectAttributes ra) {
+        clientService.enregistrerSinistre(id, dateSinistre);
+        if (dateSinistre != null && !dateSinistre.isBlank()) {
+            ra.addFlashAttribute("succes", "Sinistre enregistré au " + dateSinistre + ".");
+        } else {
+            ra.addFlashAttribute("succes", "Sinistre supprimé.");
+        }
+        return "redirect:/clients/" + id;
     }
 }

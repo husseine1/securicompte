@@ -59,7 +59,7 @@ public class ClientService {
 
         List<Souscription> souscriptions = souscriptionRepository.findByClientId(clientId);
         List<Impaye> impayes = impayeRepository.findByClientIdOrderByAnneeDescMoisDesc(clientId);
-        List<HistoriquePaiementDto> historique = construireHistorique(clientId, souscriptions, impayes);
+        List<HistoriquePaiementDto> historique = construireHistorique(clientId, souscriptions, impayes, client.getDateSinistre());
         List<StockMensuel> stock = stockMensuelRepository.findByClientIdOrderByAnneeDescMoisDesc(clientId);
 
         // Compléter la liste des impayés avec les mois détectés dans l'historique
@@ -106,6 +106,7 @@ public class ClientService {
             .zoneLib(client.getZoneLib())
             .agenceLib(client.getAgenceLib())
             .gestionnaire(client.getGestionnaire())
+            .dateSinistre(client.getDateSinistre())
             .souscriptions(souscriptions.stream().map(this::toSouscriptionDto).collect(Collectors.toList()))
             .stockMensuel(stock.stream().map(this::toStockDto).collect(Collectors.toList()))
             .historiquePaiements(historique)
@@ -120,7 +121,8 @@ public class ClientService {
      */
     private List<HistoriquePaiementDto> construireHistorique(Long clientId,
                                                                List<Souscription> souscriptions,
-                                                               List<Impaye> impayes) {
+                                                               List<Impaye> impayes,
+                                                               LocalDate dateSinistre) {
         if (souscriptions.isEmpty()) return new ArrayList<>();
 
         // Trouver la date de première souscription
@@ -153,9 +155,16 @@ public class ClientService {
                 .existsByClientIdAndAnneeAndMois(clientId, annee, mois);
             boolean importExiste = importFichierRepository.existsByAnneeAndMois(annee, mois);
 
+            // Un mois est "sinistré" si le 1er du mois >= 1er du mois de sinistre
+            boolean moisSinistre = dateSinistre != null
+                && !curseur.isBefore(dateSinistre.withDayOfMonth(1));
+
             String statut;
             if (!importExiste) {
                 statut = "NON_IMPORTE";
+            } else if (moisSinistre) {
+                // Après sinistre : prélèvement = trop-perçu, absence = statut sinistre
+                statut = presentDansStock ? "TROP_PERCU" : "SINISTRE";
             } else if (presentDansStock) {
                 statut = "PAYE";
             } else {
@@ -223,6 +232,16 @@ public class ClientService {
             .thenComparingInt(ImpayeDto::getMois).reversed());
 
         return resultat;
+    }
+
+    @Transactional
+    public void enregistrerSinistre(Long clientId, String dateSinistreStr) {
+        Client client = clientRepository.findById(clientId)
+            .orElseThrow(() -> new RuntimeException("Client non trouvé: " + clientId));
+        LocalDate dateSinistre = (dateSinistreStr != null && !dateSinistreStr.isBlank())
+            ? LocalDate.parse(dateSinistreStr) : null;
+        client.setDateSinistre(dateSinistre);
+        clientRepository.save(client);
     }
 
     public List<String> getAgences() {

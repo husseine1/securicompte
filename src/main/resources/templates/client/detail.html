@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
       th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>Fiche client - Securicompte</title></head>
 <body>
@@ -22,13 +23,17 @@
           <h5 class="fw-bold mb-1" th:text="${client.nom}">Nom</h5>
           <div class="badge bg-secondary mb-3" th:text="${client.numeroClient}"></div>
 
+          <div th:if="${client.dateSinistre != null}" class="alert alert-warning py-2 mb-2" style="font-size:13px">
+            <i class="fas fa-ambulance me-1"></i>Sinistre déclaré le
+            <strong th:text="${#temporals.format(client.dateSinistre,'dd/MM/yyyy')}"></strong>
+          </div>
           <div th:if="${client.nbImpayes > 0}" class="alert alert-danger py-2 mb-0" style="font-size:13px">
             <i class="fas fa-exclamation-triangle me-1"></i>
             <strong th:text="${client.nbImpayes}"></strong> impayé(s) actif(s)
             <span th:if="${client.montantTotalDu != null and client.montantTotalDu > 0}"
                   th:text="' — ' + ${client.montantTotalDu} + ' FCFA'"></span>
           </div>
-          <div th:if="${client.nbImpayes == 0}" class="alert alert-success py-2 mb-0" style="font-size:13px">
+          <div th:if="${client.nbImpayes == 0 and client.dateSinistre == null}" class="alert alert-success py-2 mb-0" style="font-size:13px">
             <i class="fas fa-check-circle me-1"></i>Aucun impayé en cours
           </div>
         </div>
@@ -45,7 +50,29 @@
             <tr><td class="text-muted" style="font-size:12px">Date naissance</td>
                 <td class="fw-semibold" style="font-size:13px"
                     th:text="${client.dateNaissance != null ? #temporals.format(client.dateNaissance,'dd/MM/yyyy') : '-'}"></td></tr>
+            <tr><td class="text-muted" style="font-size:12px">Sinistre</td>
+                <td style="font-size:13px">
+                  <span th:if="${client.dateSinistre != null}" class="badge bg-warning text-dark"
+                        th:text="${#temporals.format(client.dateSinistre,'dd/MM/yyyy')}"></span>
+                  <span th:if="${client.dateSinistre == null}" class="text-muted">—</span>
+                </td>
+            </tr>
           </table>
+          <!-- Gestion sinistre (admin / agent) -->
+          <div sec:authorize="hasAnyRole('ROLE_ADMIN','ROLE_AGENT')" class="mt-3 px-1">
+            <form th:action="@{/clients/{id}/sinistre(id=${client.id})}" method="post" class="d-flex gap-2 align-items-center">
+              <input type="date" name="dateSinistre" class="form-control form-control-sm"
+                     style="max-width:150px"
+                     th:value="${client.dateSinistre != null ? client.dateSinistre : ''}">
+              <button type="submit" class="btn btn-sm btn-warning">
+                <i class="fas fa-ambulance me-1"></i>Sinistre
+              </button>
+              <button th:if="${client.dateSinistre != null}" type="submit" name="dateSinistre" value=""
+                      class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-times me-1"></i>Retirer
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -115,23 +142,29 @@
                   <div class="text-center rounded p-2" style="min-width:65px"
                        th:style="${h.statut == 'PAYE'} ? 'background:#d1fae5;color:#065f46' :
                                  (${h.statut == 'IMPAYE'} ? 'background:#fee2e2;color:#991b1b' :
-                                 (${h.statut == 'REGULARISE'} ? 'background:#dbeafe;color:#1e40af' : 'background:#f3f4f6;color:#6b7280'))">
+                                 (${h.statut == 'REGULARISE'} ? 'background:#dbeafe;color:#1e40af' :
+                                 (${h.statut == 'SINISTRE'} ? 'background:#fef3c7;color:#92400e' :
+                                 (${h.statut == 'TROP_PERCU'} ? 'background:#ede9fe;color:#5b21b6' : 'background:#f3f4f6;color:#6b7280'))))">
                     <div style="font-size:10px;font-weight:700" th:text="${h.moisNom}"></div>
                     <div style="font-size:10px" th:text="${h.annee}"></div>
                     <i style="font-size:10px"
                        th:classappend="${h.statut == 'PAYE'} ? 'fas fa-check' :
                                       (${h.statut == 'IMPAYE'} ? 'fas fa-times' :
-                                      (${h.statut == 'REGULARISE'} ? 'fas fa-check-double' : 'fas fa-minus'))"></i>
+                                      (${h.statut == 'REGULARISE'} ? 'fas fa-check-double' :
+                                      (${h.statut == 'SINISTRE'} ? 'fas fa-ambulance' :
+                                      (${h.statut == 'TROP_PERCU'} ? 'fas fa-exclamation' : 'fas fa-minus'))))"></i>
                   </div>
                 </th:block>
                 <div th:if="${client.historiquePaiements.empty}" class="text-muted py-3">
                   Aucun historique disponible
                 </div>
               </div>
-              <div class="d-flex gap-3 mt-3" style="font-size:12px">
+              <div class="d-flex flex-wrap gap-3 mt-3" style="font-size:12px">
                 <span><span class="badge" style="background:#d1fae5;color:#065f46">✓</span> Payé</span>
                 <span><span class="badge" style="background:#fee2e2;color:#991b1b">✗</span> Impayé</span>
                 <span><span class="badge" style="background:#dbeafe;color:#1e40af">✓✓</span> Régularisé</span>
+                <span><span class="badge" style="background:#fef3c7;color:#92400e">S</span> Sinistre</span>
+                <span><span class="badge" style="background:#ede9fe;color:#5b21b6">!</span> Trop-perçu</span>
                 <span><span class="badge" style="background:#f3f4f6;color:#6b7280">—</span> Non importé</span>
               </div>
             </div>

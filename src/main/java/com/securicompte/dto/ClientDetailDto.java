@@ -14,6 +14,7 @@ public class ClientDetailDto {
     private String zoneLib;
     private String agenceLib;
     private String gestionnaire;
+    private LocalDate dateSinistre;
     private List<SouscriptionDto> souscriptions;
     private List<SouscriptionDto> stockMensuel;
     private List<HistoriquePaiementDto> historiquePaiements;

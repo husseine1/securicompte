@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -30,4 +31,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     @Query("SELECT DISTINCT c.gestionnaire FROM Client c WHERE c.gestionnaire IS NOT NULL ORDER BY c.gestionnaire")
     List<String> findDistinctGestionnaires();
+
+    @Query("SELECT c.id FROM Client c WHERE c.dateSinistre IS NOT NULL AND c.dateSinistre <= :date")
+    List<Long> findClientIdsWithSinistreInOrBefore(@Param("date") LocalDate date);
 }

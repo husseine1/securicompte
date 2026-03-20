@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -50,7 +51,8 @@ public class ImpayeDetectionService {
     public int detecterImpaYesDuMois(Integer annee, Integer mois) {
         log.info("=== DÉTECTION IMPAYÉS {}/{} ===", mois, annee);
 
-        LocalDate limiteHaute = LocalDate.of(annee, mois, 1);
+        // Dernier jour du mois — inclut les souscriptions en cours de mois (règle métier)
+        LocalDate limiteHaute = YearMonth.of(annee, mois).atEndOfMonth();
 
         // 1. Clients ayant souscrit avant ou pendant ce mois (une seule requête)
         Set<Long> clientsAvecSouscription = new HashSet<>(
@@ -62,28 +64,25 @@ public class ImpayeDetectionService {
             return 0;
         }
 
-        // 2. Clients présents dans le stock ce mois (une seule requête)
+        // 2. Exclure les clients ayant un sinistre déclaré ce mois ou avant
+        Set<Long> clientsAvecSinistre = new HashSet<>(
+            clientRepository.findClientIdsWithSinistreInOrBefore(limiteHaute));
+        if (!clientsAvecSinistre.isEmpty()) {
+            clientsAvecSouscription.removeAll(clientsAvecSinistre);
+            log.info("Clients exclus (sinistre): {}", clientsAvecSinistre.size());
+        }
+
+        if (clientsAvecSouscription.isEmpty()) {
+            log.info("Aucun client actif après exclusion sinistres.");
+            return 0;
+        }
+
+        // 3. Clients présents dans le stock ce mois (une seule requête)
         Set<Long> clientsPayesIds = new HashSet<>(
             stockMensuelRepository.findClientIdsPresentsDansMois(annee, mois));
         log.info("Clients présents dans le stock: {}", clientsPayesIds.size());
 
-        // 3. Régulariser en bulk les clients qui ont payé ce mois
-        List<Long> aRegulariser = clientsAvecSouscription.stream()
-            .filter(clientsPayesIds::contains)
-            .collect(Collectors.toList());
-
-        if (!aRegulariser.isEmpty()) {
-            String comment = "Regularisation automatique - " + mois + "/" + annee;
-            LocalDateTime now = LocalDateTime.now();
-            int totalReg = 0;
-            for (int i = 0; i < aRegulariser.size(); i += BATCH_SIZE) {
-                List<Long> batch = aRegulariser.subList(i, Math.min(i + BATCH_SIZE, aRegulariser.size()));
-                totalReg += impayeRepository.regulariserBulk(
-                    batch, annee, mois, now, comment,
-                    StatutImpaye.REGULARISE, StatutImpaye.IMPAYE);
-            }
-            log.info("{} impayés régularisés", totalReg);
-        }
+        // NB : chaque mois est indépendant — pas de régularisation automatique des mois précédents
 
         // 4. Clients impayés = ont souscrit MAIS absents du stock
         Set<Long> impayesExistants = new HashSet<>(
