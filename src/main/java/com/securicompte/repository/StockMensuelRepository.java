@@ -32,4 +32,14 @@ public interface StockMensuelRepository extends JpaRepository<StockMensuel, Long
      */
     @Query("SELECT s FROM StockMensuel s JOIN FETCH s.client WHERE s.annee = :annee AND s.mois = :mois")
     List<StockMensuel> findByAnneeAndMoisWithClient(@Param("annee") Integer annee, @Param("mois") Integer mois);
+
+    /**
+     * Charge le stock d'un mois pour une liste précise de clients (avec JOIN FETCH).
+     * Utilisé pour récupérer en bulk le stock du mois de souscription de chaque client.
+     */
+    @Query("SELECT s FROM StockMensuel s JOIN FETCH s.client c WHERE c.id IN :clientIds AND s.annee = :annee AND s.mois = :mois")
+    List<StockMensuel> findByClientIdsAndAnneeAndMois(
+            @Param("clientIds") List<Long> clientIds,
+            @Param("annee") Integer annee,
+            @Param("mois") Integer mois);
 }
