@@ -17,4 +17,7 @@ public interface ImportFichierRepository extends JpaRepository<ImportFichier, Lo
 
     @Query("SELECT DISTINCT f.annee FROM ImportFichier f ORDER BY f.annee DESC")
     List<Integer> findDistinctAnnees();
+
+    @Query("SELECT f.annee, f.mois FROM ImportFichier f")
+    List<Object[]> findAllAnneesMois();
 }

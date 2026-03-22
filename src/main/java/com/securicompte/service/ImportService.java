@@ -261,29 +261,30 @@ public class ImportService {
 
     /**
      * Importe le stock mensuel en bulk.
-     * Fallback : si la colonne CLIENT est absente, on tente la correspondance par NOM.
+     * Seul l'identifiant client (colonne CLIENT) est accepté — pas de fallback par NOM
+     * pour éviter les faux positifs en cas d'homonymes.
      * Retourne int[]{nbImportés, nbErreurs}.
      */
     private int[] importerStockBulk(List<Map<String, Object>> rows, int annee, int mois,
                                      ImportFichier importFichier,
                                      Map<String, Client> clientCache) {
-        Map<String, Client> cacheParNom = construireCacheParNom(rows, clientCache);
-
         Set<Long> seen = new HashSet<>();
         List<StockMensuel> toSave = new ArrayList<>();
         int erreurs = 0;
         for (Map<String, Object> row : rows) {
             try {
                 String num = excelParserService.getString(row, "CLIENT");
-                Client client = null;
-                if (num != null) {
-                    client = clientCache.get(num);
-                } else {
-                    String nom = excelParserService.getString(row, "NOM");
-                    if (nom != null) client = cacheParNom.get(nom.toUpperCase());
+                if (num == null) {
+                    log.warn("Ligne stock ignorée : colonne CLIENT absente. Vérifiez que le fichier contient bien la colonne CLIENT.");
+                    erreurs++;
+                    continue;
                 }
-                if (client == null) continue;
-
+                Client client = clientCache.get(num);
+                if (client == null) {
+                    log.warn("Client introuvable pour le numéro: {}", num);
+                    erreurs++;
+                    continue;
+                }
                 if (!seen.contains(client.getId())) {
                     toSave.add(excelParserService.rowToStock(row, client, annee, mois, importFichier));
                     seen.add(client.getId());
@@ -295,41 +296,6 @@ public class ImportService {
         }
         stockMensuelRepository.saveAll(toSave);
         return new int[]{toSave.size(), erreurs};
-    }
-
-    /**
-     * Construit un cache secondaire Map<NOM_EN_MAJUSCULES, Client> pour
-     * les lignes de stock sans numéro client.
-     */
-    private Map<String, Client> construireCacheParNom(List<Map<String, Object>> stockRows,
-                                                       Map<String, Client> cacheExistant) {
-        Map<String, Client> cacheParNom = new HashMap<>();
-        // Indexer d'abord les clients déjà chargés
-        cacheExistant.values().forEach(c -> {
-            if (c.getNom() != null) cacheParNom.put(c.getNom().toUpperCase(), c);
-        });
-
-        // Collecter les noms des lignes sans CLIENT absents du cache
-        Set<String> nomsManquants = new HashSet<>();
-        for (Map<String, Object> row : stockRows) {
-            String num = excelParserService.getString(row, "CLIENT");
-            if (num == null) {
-                String nom = excelParserService.getString(row, "NOM");
-                if (nom != null && !cacheParNom.containsKey(nom.toUpperCase())) {
-                    nomsManquants.add(nom);
-                }
-            }
-        }
-
-        // Charger en bulk depuis la DB
-        if (!nomsManquants.isEmpty()) {
-            clientRepository.findByNomIn(nomsManquants)
-                .forEach(c -> cacheParNom.put(c.getNom().toUpperCase(), c));
-            log.info("Cache par nom: {} noms recherchés, {} clients trouvés",
-                nomsManquants.size(),
-                nomsManquants.stream().filter(n -> cacheParNom.containsKey(n.toUpperCase())).count());
-        }
-        return cacheParNom;
     }
 
     private boolean clientAChange(Client client, Map<String, Object> row) {

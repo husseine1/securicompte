@@ -17,7 +17,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-@Component
+// @Component retiré intentionnellement : l'application intranet utilise l'auth par session (Form Login).
+// Pour réactiver JWT (ex. future API REST), rajouter @Component et l'enregistrer dans SecurityConfig.
 @RequiredArgsConstructor
 @Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {

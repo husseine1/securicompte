@@ -122,7 +122,8 @@ public class ExcelExportService {
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         sheet.createRow(6).createCell(0).setCellValue("Montant total dû:");
-        sheet.getRow(6).createCell(1).setCellValue(montantTotal.doubleValue());
+        sheet.getRow(6).createCell(1).setCellValue(
+            montantTotal.setScale(2, java.math.RoundingMode.HALF_UP).doubleValue());
 
         sheet.autoSizeColumn(0);
         sheet.autoSizeColumn(1);
@@ -137,7 +138,8 @@ public class ExcelExportService {
         } else if (value instanceof Long l) {
             cell.setCellValue(l);
         } else if (value instanceof BigDecimal bd) {
-            cell.setCellValue(bd.doubleValue());
+            // Arrondi explicite à 2 décimales avant conversion pour éviter la perte de précision double
+            cell.setCellValue(bd.setScale(2, java.math.RoundingMode.HALF_UP).doubleValue());
         } else if (value instanceof Double d) {
             cell.setCellValue(d);
         } else {

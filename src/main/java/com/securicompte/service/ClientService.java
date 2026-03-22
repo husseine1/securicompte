@@ -3,6 +3,7 @@ package com.securicompte.service;
 import com.securicompte.dto.*;
 import com.securicompte.entity.*;
 import com.securicompte.enums.StatutImpaye;
+import com.securicompte.mapper.ImpayeMapper;
 import com.securicompte.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ public class ClientService {
     private final StockMensuelRepository stockMensuelRepository;
     private final ImpayeRepository impayeRepository;
     private final ImportFichierRepository importFichierRepository;
+    private final ImpayeMapper impayeMapper;
 
     /**
      * Recherche un client par numéro ou nom
@@ -59,8 +61,14 @@ public class ClientService {
 
         List<Souscription> souscriptions = souscriptionRepository.findByClientId(clientId);
         List<Impaye> impayes = impayeRepository.findByClientIdOrderByAnneeDescMoisDesc(clientId);
-        List<HistoriquePaiementDto> historique = construireHistorique(clientId, souscriptions, impayes, client.getDateSinistre());
         List<StockMensuel> stock = stockMensuelRepository.findByClientIdOrderByAnneeDescMoisDesc(clientId);
+
+        // Charger tous les mois importés en UNE seule requête (au lieu de 1 requête par mois dans la boucle)
+        Set<String> moisImportes = importFichierRepository.findAllAnneesMois().stream()
+            .map(arr -> arr[0] + "_" + arr[1])
+            .collect(Collectors.toSet());
+
+        List<HistoriquePaiementDto> historique = construireHistorique(souscriptions, impayes, stock, client.getDateSinistre(), moisImportes);
 
         // Compléter la liste des impayés avec les mois détectés dans l'historique
         // mais absents de la table impaye (détection manquée)
@@ -117,15 +125,18 @@ public class ClientService {
     }
 
     /**
-     * Construit l'historique des paiements mois par mois depuis la souscription
+     * Construit l'historique des paiements mois par mois depuis la souscription.
+     * Optimisé : 0 requête DB dans la boucle (utilise des Sets précalculés).
+     *
+     * @param moisImportes  Set de "annee_mois" chargé en amont (1 seule requête)
      */
-    private List<HistoriquePaiementDto> construireHistorique(Long clientId,
-                                                               List<Souscription> souscriptions,
+    private List<HistoriquePaiementDto> construireHistorique(List<Souscription> souscriptions,
                                                                List<Impaye> impayes,
-                                                               LocalDate dateSinistre) {
+                                                               List<StockMensuel> stock,
+                                                               LocalDate dateSinistre,
+                                                               Set<String> moisImportes) {
         if (souscriptions.isEmpty()) return new ArrayList<>();
 
-        // Trouver la date de première souscription
         LocalDate premiereSouscription = souscriptions.stream()
             .map(Souscription::getDatSouscription)
             .filter(Objects::nonNull)
@@ -134,7 +145,7 @@ public class ClientService {
 
         if (premiereSouscription == null) return new ArrayList<>();
 
-        // Index des statuts impayés par "annee_mois" pour éviter N+1 requêtes
+        // Index statuts impayés par "annee_mois"
         Map<String, StatutImpaye> statutsImpaye = impayes.stream()
             .collect(Collectors.toMap(
                 i -> i.getAnnee() + "_" + i.getMois(),
@@ -142,39 +153,35 @@ public class ClientService {
                 (a, b) -> a
             ));
 
+        // Index stock en mémoire — O(1) au lieu d'1 requête DB par mois
+        Set<String> moisEnStock = stock.stream()
+            .map(s -> s.getAnnee() + "_" + s.getMois())
+            .collect(Collectors.toSet());
+
         LocalDate maintenant = LocalDate.now();
         List<HistoriquePaiementDto> historique = new ArrayList<>();
 
-        // Parcourir mois par mois depuis la souscription jusqu'à aujourd'hui
         LocalDate curseur = premiereSouscription.withDayOfMonth(1);
         while (!curseur.isAfter(maintenant)) {
             int annee = curseur.getYear();
             int mois = curseur.getMonthValue();
+            String cle = annee + "_" + mois;
 
-            boolean presentDansStock = stockMensuelRepository
-                .existsByClientIdAndAnneeAndMois(clientId, annee, mois);
-            boolean importExiste = importFichierRepository.existsByAnneeAndMois(annee, mois);
-
-            // Un mois est "sinistré" si le 1er du mois >= 1er du mois de sinistre
-            boolean moisSinistre = dateSinistre != null
+            boolean presentDansStock = moisEnStock.contains(cle);
+            boolean importExiste    = moisImportes.contains(cle);
+            boolean moisSinistre    = dateSinistre != null
                 && !curseur.isBefore(dateSinistre.withDayOfMonth(1));
 
             String statut;
             if (!importExiste) {
                 statut = "NON_IMPORTE";
             } else if (moisSinistre) {
-                // Après sinistre : prélèvement = trop-perçu, absence = statut sinistre
                 statut = presentDansStock ? "TROP_PERCU" : "SINISTRE";
             } else if (presentDansStock) {
                 statut = "PAYE";
             } else {
-                // Utiliser le statut de la table impayé s'il existe
-                StatutImpaye statutDb = statutsImpaye.get(annee + "_" + mois);
-                if (statutDb == StatutImpaye.REGULARISE) {
-                    statut = "REGULARISE";
-                } else {
-                    statut = "IMPAYE";
-                }
+                StatutImpaye statutDb = statutsImpaye.get(cle);
+                statut = (statutDb == StatutImpaye.REGULARISE) ? "REGULARISE" : "IMPAYE";
             }
 
             historique.add(HistoriquePaiementDto.builder()
@@ -188,7 +195,6 @@ public class ClientService {
             curseur = curseur.plusMonths(1);
         }
 
-        // Ordre décroissant
         Collections.reverse(historique);
         return historique;
     }
@@ -252,28 +258,6 @@ public class ClientService {
         return clientRepository.findDistinctGestionnaires();
     }
 
-    private ClientDto toClientDto(Client client) {
-        List<Impaye> impayes = impayeRepository.findByClientIdOrderByAnneeDescMoisDesc(client.getId());
-        long nbImpayes = impayes.stream().filter(i -> i.getStatut() == StatutImpaye.IMPAYE).count();
-        BigDecimal montant = impayes.stream()
-            .filter(i -> i.getStatut() == StatutImpaye.IMPAYE && i.getMontantDu() != null)
-            .map(Impaye::getMontantDu)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return ClientDto.builder()
-            .id(client.getId())
-            .numeroClient(client.getNumeroClient())
-            .nom(client.getNom())
-            .dateNaissance(client.getDateNaissance())
-            .compte(client.getCompte())
-            .zoneLib(client.getZoneLib())
-            .agenceLib(client.getAgenceLib())
-            .gestionnaire(client.getGestionnaire())
-            .nbImpayes((int) nbImpayes)
-            .montantTotalDu(montant)
-            .build();
-    }
-
     private SouscriptionDto toStockDto(StockMensuel s) {
         return SouscriptionDto.builder()
             .annee(s.getAnnee())
@@ -301,25 +285,7 @@ public class ClientService {
     }
 
     public ImpayeDto toImpayeDto(Impaye i) {
-        return ImpayeDto.builder()
-            .id(i.getId())
-            .clientId(i.getClient() != null ? i.getClient().getId() : null)
-            .numeroClient(i.getClient() != null ? i.getClient().getNumeroClient() : null)
-            .nomClient(i.getClient() != null ? i.getClient().getNom() : null)
-            .agenceLib(i.getAgenceLib())
-            .gestionnaire(i.getGestionnaire())
-            .zoneLib(i.getZoneLib())
-            .annee(i.getAnnee())
-            .mois(i.getMois())
-            .moisNom(getMoisNom(i.getMois()))
-            .statut(i.getStatut())
-            .montantDu(i.getMontantDu())
-            .securicompte(i.getSouscription() != null ? i.getSouscription().getSecuricompte() : null)
-            .dateDetection(i.getDateDetection())
-            .dateRegularisation(i.getDateRegularisation())
-            .regularisePar(i.getRegularisePar() != null ? i.getRegularisePar().getUsername() : null)
-            .commentaire(i.getCommentaire())
-            .build();
+        return impayeMapper.toDto(i);
     }
 
     private String getMoisNom(Integer mois) {
