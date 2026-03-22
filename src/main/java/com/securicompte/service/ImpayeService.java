@@ -2,8 +2,10 @@ package com.securicompte.service;
 
 import com.securicompte.dto.*;
 import com.securicompte.entity.Impaye;
+import com.securicompte.entity.StockMensuel;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.repository.ImpayeRepository;
+import com.securicompte.repository.StockMensuelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -11,7 +13,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -19,8 +24,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ImpayeService {
 
-    private final ImpayeRepository impayeRepository;
-    private final ClientService clientService;
+    private final ImpayeRepository      impayeRepository;
+    private final ClientService         clientService;
+    private final StockMensuelRepository stockMensuelRepository;
+    private final NotificationService   notificationService;
 
     @Transactional(readOnly = true)
     public Page<ImpayeDto> getImpaYesWithFilters(FiltreImpayeDto filtre) {
@@ -91,8 +98,40 @@ public class ImpayeService {
             impaye.setCommentaire(commentaire);
             impaye.setRegularisePar(regularisePar);
             impayeRepository.save(impaye);
+            detecterChangementPrime(impaye, regularisePar.getUsername());
             return true;
         }).orElse(false);
+    }
+
+    /**
+     * Compare la prime du mois de l'impayé avec celle du mois de régularisation.
+     * Si une différence est détectée, crée une notification pour l'admin.
+     */
+    private void detecterChangementPrime(Impaye impaye, String username) {
+        Long clientId = impaye.getClient().getId();
+        LocalDate aujourd = LocalDate.now();
+
+        Optional<StockMensuel> stockOriginalOpt = stockMensuelRepository
+                .findByClientIdAndAnneeAndMois(clientId, impaye.getAnnee(), impaye.getMois());
+        Optional<StockMensuel> stockActuelOpt = stockMensuelRepository
+                .findByClientIdAndAnneeAndMois(clientId, aujourd.getYear(), aujourd.getMonthValue());
+
+        if (stockOriginalOpt.isEmpty() || stockActuelOpt.isEmpty()) {
+            // Pas assez de données pour comparer
+            return;
+        }
+
+        StockMensuel orig = stockOriginalOpt.get();
+        StockMensuel actu = stockActuelOpt.get();
+
+        boolean securicompteChange = !Objects.equals(orig.getSecuricompte(), actu.getSecuricompte());
+        boolean commissionsChange  = orig.getCommissions() != null && actu.getCommissions() != null
+                ? orig.getCommissions().compareTo(actu.getCommissions()) != 0
+                : !Objects.equals(orig.getCommissions(), actu.getCommissions());
+
+        if (securicompteChange || commissionsChange) {
+            notificationService.creerNotificationChangementPrime(impaye, orig, actu, username);
+        }
     }
 
     @Transactional
