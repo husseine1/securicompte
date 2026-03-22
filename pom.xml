@@ -14,8 +14,8 @@
     <groupId>com.securicompte</groupId>
     <artifactId>securicompte</artifactId>
     <version>1.0.0</version>
-    <name>Securicompte</name>
-    <description>Gestion et détection automatique des impayés - Securicompte</description>
+    <name>Gestion des Impayés</name>
+    <description>Application de gestion et détection automatique des impayés SecuriCompte</description>
 
     <properties>
         <java.version>17</java.version>
