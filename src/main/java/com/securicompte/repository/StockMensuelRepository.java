@@ -25,4 +25,11 @@ public interface StockMensuelRepository extends JpaRepository<StockMensuel, Long
 
     @Query("SELECT DISTINCT s.annee, s.mois FROM StockMensuel s ORDER BY s.annee ASC, s.mois ASC")
     List<Object[]> findAllDistinctAnneesMois();
+
+    /**
+     * Charge le stock d'un mois avec le client déjà joint (évite le N+1).
+     * Utilisé pour la détection de changement de prime lors de l'import.
+     */
+    @Query("SELECT s FROM StockMensuel s JOIN FETCH s.client WHERE s.annee = :annee AND s.mois = :mois")
+    List<StockMensuel> findByAnneeAndMoisWithClient(@Param("annee") Integer annee, @Param("mois") Integer mois);
 }

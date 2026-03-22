@@ -23,13 +23,14 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ImportService {
 
-    private final ExcelParserService excelParserService;
-    private final ImpayeDetectionService impayeDetectionService;
-    private final ImportFichierRepository importFichierRepository;
-    private final ClientRepository clientRepository;
-    private final SouscriptionRepository souscriptionRepository;
-    private final StockMensuelRepository stockMensuelRepository;
-    private final ImpayeRepository impayeRepository;
+    private final ExcelParserService       excelParserService;
+    private final ImpayeDetectionService   impayeDetectionService;
+    private final NotificationService      notificationService;
+    private final ImportFichierRepository  importFichierRepository;
+    private final ClientRepository         clientRepository;
+    private final SouscriptionRepository   souscriptionRepository;
+    private final StockMensuelRepository   stockMensuelRepository;
+    private final ImpayeRepository         impayeRepository;
     private final PlatformTransactionManager transactionManager;
 
     /**
@@ -110,6 +111,17 @@ public class ImportService {
 
             log.info("Import terminé avec succès: Nouvelles={}, Anciennes={}, Stock={}, Impayés={}, Erreurs={}",
                 c[0], c[1], c[2], c[3], c[4]);
+
+            // Tx4 : détecter les changements de prime (non bloquant — ne remet pas en cause l'import)
+            try {
+                final String username = importePar.getUsername();
+                tx.execute(status -> {
+                    detecterChangementsPrimeImport(annee, mois, username);
+                    return null;
+                });
+            } catch (Exception e) {
+                log.warn("Détection changements de prime non complétée (non bloquant) : {}", e.getMessage());
+            }
 
             ImportFichier saved = importFichierRepository.findById(importId).orElseThrow();
             return ImportResultDto.builder()
@@ -326,6 +338,71 @@ public class ImportService {
         log.info("Suppression bulk stock {}/{}", mois, annee);
         souscriptionRepository.deleteByImportFichierId(importFichierId);
         log.info("Suppression bulk des souscriptions de l'import {}/{}", mois, annee);
+    }
+
+    /**
+     * Compare la prime (securicompte + commissions) du stock importé ce mois
+     * avec la prime de la souscription la plus récente de chaque client.
+     * Crée une notification de synthèse si des écarts sont détectés.
+     */
+    private void detecterChangementsPrimeImport(int annee, int mois, String importePar) {
+        List<StockMensuel> stocks = stockMensuelRepository.findByAnneeAndMoisWithClient(annee, mois);
+        if (stocks.isEmpty()) return;
+
+        // Charger toutes les souscriptions des clients concernés en bulk (par lots)
+        List<Long> clientIds = stocks.stream()
+            .map(s -> s.getClient().getId())
+            .distinct()
+            .collect(Collectors.toList());
+
+        Map<Long, Souscription> derniereSouscriptionParClient = new HashMap<>();
+        int batchSize = 1000;
+        for (int i = 0; i < clientIds.size(); i += batchSize) {
+            List<Long> batch = clientIds.subList(i, Math.min(i + batchSize, clientIds.size()));
+            souscriptionRepository.findAllByClientIdsOrderByDateDesc(batch).forEach(s -> {
+                // On garde seulement la plus récente (ORDER BY DESC garantit qu'elle arrive en premier)
+                derniereSouscriptionParClient.putIfAbsent(s.getClient().getId(), s);
+            });
+        }
+
+        // Comparer prime stock vs prime souscription
+        List<String> exemples = new ArrayList<>();
+        int nbChangements = 0;
+
+        for (StockMensuel stock : stocks) {
+            Souscription souscription = derniereSouscriptionParClient.get(stock.getClient().getId());
+            if (souscription == null) continue;
+
+            boolean scChange   = !Objects.equals(stock.getSecuricompte(), souscription.getSecuricompte());
+            boolean commChange = stock.getCommissions() != null && souscription.getCommissions() != null
+                ? stock.getCommissions().compareTo(souscription.getCommissions()) != 0
+                : !Objects.equals(stock.getCommissions(), souscription.getCommissions());
+
+            if (scChange || commChange) {
+                nbChangements++;
+                if (exemples.size() < 5) {
+                    exemples.add(String.format("%s (SC: %s→%s | Com: %s→%s)",
+                        stock.getClient().getNom(),
+                        nvl(souscription.getSecuricompte()), nvl(stock.getSecuricompte()),
+                        nvl(souscription.getCommissions()), nvl(stock.getCommissions())));
+                }
+            }
+        }
+
+        if (nbChangements > 0) {
+            String details = "Exemples : " + String.join(" | ", exemples)
+                + (nbChangements > exemples.size()
+                    ? String.format(" … et %d autre(s).", nbChangements - exemples.size())
+                    : ".");
+            notificationService.creerNotificationChangementPrimeImport(annee, mois, nbChangements, details, importePar);
+        }
+
+        log.info("Détection prime import {}/{} : {} changement(s) sur {} clients",
+            mois, annee, nbChangements, stocks.size());
+    }
+
+    private String nvl(Object o) {
+        return o != null ? o.toString() : "N/A";
     }
 
     public ImportFichier getImportById(Long id) {

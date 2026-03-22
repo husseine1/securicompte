@@ -26,4 +26,11 @@ public interface SouscriptionRepository extends JpaRepository<Souscription, Long
 
     @Query("SELECT DISTINCT s.client.id FROM Souscription s WHERE s.datSouscription <= :date")
     List<Long> findClientIdsWithSouscriptionBefore(@Param("date") LocalDate date);
+
+    /**
+     * Charge toutes les souscriptions pour un ensemble de clients (avec client en JOIN FETCH).
+     * Utilisé pour la détection de changement de prime lors de l'import.
+     */
+    @Query("SELECT s FROM Souscription s JOIN FETCH s.client c WHERE c.id IN :clientIds ORDER BY s.datSouscription DESC")
+    List<Souscription> findAllByClientIdsOrderByDateDesc(@Param("clientIds") List<Long> clientIds);
 }

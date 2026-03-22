@@ -78,6 +78,39 @@ public class NotificationService {
                 impaye.getId(), impaye.getClient().getNumeroClient());
     }
 
+    /**
+     * Crée une notification de synthèse pour les changements de prime détectés
+     * lors d'un import mensuel.
+     *
+     * @param annee          année importée
+     * @param mois           mois importé
+     * @param nbChangements  nombre total de clients avec écart de prime
+     * @param details        texte descriptif des premiers exemples
+     * @param importePar     username de l'agent/admin qui a importé
+     */
+    @Transactional
+    public void creerNotificationChangementPrimeImport(
+            int annee, int mois, int nbChangements, String details, String importePar) {
+
+        String moisNom = getMoisNom(mois);
+        String message = String.format(
+                "Import %s %d : %d client(s) avec changement de prime détecté(s). %s",
+                moisNom, annee, nbChangements, details
+        );
+
+        Notification notif = Notification.builder()
+                .type("CHANGEMENT_PRIME_IMPORT")
+                .message(message)
+                .anneeImpaye(annee)
+                .moisImpaye(mois)
+                .creePar(importePar)
+                .build();
+
+        notificationRepository.save(notif);
+        log.info("Notification import créée : {} changement(s) de prime pour {}/{}",
+                nbChangements, mois, annee);
+    }
+
     @Transactional(readOnly = true)
     public List<Notification> getNonLues() {
         return notificationRepository.findByLuFalseOrderByCreatedAtDesc();
