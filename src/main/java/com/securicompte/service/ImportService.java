@@ -13,7 +13,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Objects;
@@ -342,31 +341,23 @@ public class ImportService {
     }
 
     /**
-     * Compare la prime (securicompte + commissions) du stock importé ce mois
-     * avec la prime du stock au mois de souscription de chaque client.
-     *
-     * Logique :
-     *  1. Charger le stock du mois importé (M) → prime courante
-     *  2. Charger la souscription la plus récente de chaque client → dat_souscription
-     *  3. Regrouper les clients par mois de souscription
-     *  4. Pour chaque groupe, charger en bulk le stock du mois de souscription → prime de référence
-     *  5. Comparer les deux primes ; si écart → notification de synthèse
-     *
-     * Fallback : si le stock du mois de souscription n'existe pas en base,
-     * comparer avec les champs securicompte/commissions de l'entité Souscription.
+     * Pour chaque client dans le stock importé ce mois, compare sa prime courante
+     * (securicompte + commissions dans StockMensuel) avec sa prime à la date de souscription
+     * (securicompte + commissions dans l'entité Souscription).
+     * Si un écart est détecté, crée une notification de synthèse.
      */
     private void detecterChangementsPrimeImport(int annee, int mois, String importePar) {
 
-        // ── Étape 1 : stock du mois importé ──────────────────────────────────────
+        // Stock du mois importé — avec client déjà chargé (JOIN FETCH, pas de N+1)
         List<StockMensuel> stocksCourants = stockMensuelRepository.findByAnneeAndMoisWithClient(annee, mois);
         if (stocksCourants.isEmpty()) return;
 
-        Map<Long, StockMensuel> stockCourantParClient = stocksCourants.stream()
-            .collect(Collectors.toMap(s -> s.getClient().getId(), s -> s));
+        // Souscription la plus récente de chaque client (bulk, par lots de 1000)
+        List<Long> clientIds = stocksCourants.stream()
+            .map(s -> s.getClient().getId())
+            .distinct()
+            .collect(Collectors.toList());
 
-        List<Long> clientIds = new ArrayList<>(stockCourantParClient.keySet());
-
-        // ── Étape 2 : souscription la plus récente de chaque client (bulk) ───────
         Map<Long, Souscription> souscriptionParClient = new HashMap<>();
         int batchSize = 1000;
         for (int i = 0; i < clientIds.size(); i += batchSize) {
@@ -375,66 +366,28 @@ public class ImportService {
                 .forEach(s -> souscriptionParClient.putIfAbsent(s.getClient().getId(), s));
         }
 
-        // ── Étape 3 : regrouper par mois de souscription ─────────────────────────
-        // Clé "YYYY_M" → liste de clientIds ayant souscrit ce mois
-        Map<String, List<Long>> clientsParMoisSouscription = new LinkedHashMap<>();
-        for (Long clientId : clientIds) {
-            Souscription s = souscriptionParClient.get(clientId);
-            if (s == null || s.getDatSouscription() == null) continue;
-            LocalDate d = s.getDatSouscription();
-            String cle = d.getYear() + "_" + d.getMonthValue();
-            clientsParMoisSouscription.computeIfAbsent(cle, k -> new ArrayList<>()).add(clientId);
-        }
-
-        // ── Étape 4 : charger en bulk le stock de référence (mois de souscription) ─
-        Map<Long, StockMensuel> stockRefParClient = new HashMap<>();
-        for (Map.Entry<String, List<Long>> entry : clientsParMoisSouscription.entrySet()) {
-            String[] parts = entry.getKey().split("_");
-            int annSousc  = Integer.parseInt(parts[0]);
-            int moisSousc = Integer.parseInt(parts[1]);
-            if (annSousc == annee && moisSousc == mois) continue; // même mois → rien à comparer
-
-            List<Long> groupe = entry.getValue();
-            for (int i = 0; i < groupe.size(); i += batchSize) {
-                List<Long> batch = groupe.subList(i, Math.min(i + batchSize, groupe.size()));
-                stockMensuelRepository.findByClientIdsAndAnneeAndMois(batch, annSousc, moisSousc)
-                    .forEach(s -> stockRefParClient.put(s.getClient().getId(), s));
-            }
-        }
-
-        // ── Étape 5 : comparer et collecter les écarts ────────────────────────────
+        // Comparaison : prime du stock importé vs prime à la date de souscription
         List<String> exemples = new ArrayList<>();
         int nbChangements = 0;
 
-        for (StockMensuel courant : stocksCourants) {
-            Long clientId = courant.getClient().getId();
-            StockMensuel ref = stockRefParClient.get(clientId);
+        for (StockMensuel stock : stocksCourants) {
+            Souscription souscription = souscriptionParClient.get(stock.getClient().getId());
+            if (souscription == null) continue;
 
-            String scRef, scCourant, commRef, commCourant;
-            if (ref != null) {
-                // Comparaison stock-à-stock (référence = mois de souscription)
-                scRef      = nvl(ref.getSecuricompte());
-                scCourant  = nvl(courant.getSecuricompte());
-                commRef    = nvl(ref.getCommissions());
-                commCourant= nvl(courant.getCommissions());
-            } else {
-                // Fallback : champs de l'entité Souscription
-                Souscription s = souscriptionParClient.get(clientId);
-                if (s == null) continue;
-                scRef      = nvl(s.getSecuricompte());
-                scCourant  = nvl(courant.getSecuricompte());
-                commRef    = nvl(s.getCommissions());
-                commCourant= nvl(courant.getCommissions());
-            }
+            String scSousc   = nvl(souscription.getSecuricompte());
+            String scStock   = nvl(stock.getSecuricompte());
+            String commSousc = nvl(souscription.getCommissions());
+            String commStock = nvl(stock.getCommissions());
 
-            boolean scChange   = !scRef.equals(scCourant);
-            boolean commChange = !commRef.equals(commCourant);
+            boolean scChange   = !scSousc.equals(scStock);
+            boolean commChange = !commSousc.equals(commStock);
 
             if (scChange || commChange) {
                 nbChangements++;
                 if (exemples.size() < 5) {
                     exemples.add(String.format("%s (SC: %s→%s | Com: %s→%s)",
-                        courant.getClient().getNom(), scRef, scCourant, commRef, commCourant));
+                        stock.getClient().getNom(),
+                        scSousc, scStock, commSousc, commStock));
                 }
             }
         }
