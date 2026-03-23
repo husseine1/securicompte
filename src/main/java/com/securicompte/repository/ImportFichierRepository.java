@@ -33,4 +33,6 @@ public interface ImportFichierRepository extends JpaRepository<ImportFichier, Lo
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM ImportFichier f WHERE f.id = :id")
     void deleteDirectById(@Param("id") Long id);
+
+    long countByStatut(StatutImport statut);
 }

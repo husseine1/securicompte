@@ -51,12 +51,27 @@
             </div>
 
             <button id="submitBtn" type="submit" class="btn btn-primary w-100">
-              <span id="btnText"><i class="fas fa-upload me-1"></i>Lancer l'import</span>
-              <span id="btnSpinner" class="d-none">
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>Traitement en cours&#8230;
-              </span>
+              <i class="fas fa-upload me-1"></i>Lancer l'import
             </button>
           </form>
+
+          <!-- Barre de progression (masquée au départ) -->
+          <div id="progressBox" class="d-none mt-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <small id="progressLabel" class="fw-semibold text-muted">Envoi du fichier…</small>
+              <small id="progressPct" class="text-muted">0%</small>
+            </div>
+            <div class="progress" style="height:18px;border-radius:9px">
+              <div id="progressBar"
+                   class="progress-bar progress-bar-striped progress-bar-animated"
+                   role="progressbar"
+                   style="width:0%;transition:width .3s ease;border-radius:9px;font-size:11px">
+              </div>
+            </div>
+            <div id="progressStep" class="mt-2 text-center text-muted" style="font-size:12px">
+              <i class="fas fa-cloud-upload-alt me-1"></i>Envoi en cours…
+            </div>
+          </div>
         </div>
       </div>
 
@@ -154,27 +169,145 @@
   </div>
 
   <script th:inline="javascript">
-    /*<![CDATA[*/
-    // Spinner sur le bouton submit
-    document.getElementById('importForm').addEventListener('submit', function() {
-      document.getElementById('btnText').classList.add('d-none');
-      document.getElementById('btnSpinner').classList.remove('d-none');
-      document.getElementById('submitBtn').disabled = true;
+  /*<![CDATA[*/
+
+  // ─── Éléments DOM ───────────────────────────────────────────────────────────
+  const form        = document.getElementById('importForm');
+  const submitBtn   = document.getElementById('submitBtn');
+  const progressBox = document.getElementById('progressBox');
+  const progressBar = document.getElementById('progressBar');
+  const progressPct = document.getElementById('progressPct');
+  const progressLbl = document.getElementById('progressLabel');
+  const progressStp = document.getElementById('progressStep');
+
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+  function setProgress(pct, label, step, color) {
+    progressBar.style.width = pct + '%';
+    progressBar.setAttribute('aria-valuenow', pct);
+    progressPct.textContent  = pct + '%';
+    progressLbl.textContent  = label;
+    progressStp.innerHTML    = step;
+    // Couleur
+    progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated ' + (color || 'bg-primary');
+  }
+
+  function setProgressTermine() {
+    progressBar.style.width = '100%';
+    progressPct.textContent = '100%';
+    progressLbl.textContent = 'Import terminé !';
+    progressStp.innerHTML   = '<i class="fas fa-check-circle text-success me-1"></i><span class="text-success">Traitement terminé — rechargement…</span>';
+    progressBar.className   = 'progress-bar bg-success';
+  }
+
+  // ─── Soumission via XHR pour capturer la progression de l'envoi ─────────────
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(form);
+
+    // Afficher la barre, désactiver le bouton
+    progressBox.classList.remove('d-none');
+    submitBtn.disabled = true;
+    setProgress(0, 'Envoi du fichier…',
+      '<i class="fas fa-cloud-upload-alt me-1"></i>Envoi en cours…', 'bg-primary');
+
+    const xhr = new XMLHttpRequest();
+
+    // ── Phase 1 : progression de l'upload ──────────────────────────────────
+    xhr.upload.addEventListener('progress', function(e) {
+      if (!e.lengthComputable) return;
+      const pct = Math.min(Math.round(e.loaded / e.total * 100), 100);
+      setProgress(pct,
+        'Envoi du fichier… (' + formatSize(e.loaded) + ' / ' + formatSize(e.total) + ')',
+        '<i class="fas fa-cloud-upload-alt me-1"></i>Transfert en cours…',
+        'bg-primary');
     });
 
-    // Auto-refresh toutes les 4 secondes si un import est EN_COURS
-    const hasEnCours = /*[[${imports.?[statut.name() == 'EN_COURS'].size() > 0}]]*/ false;
-    if (hasEnCours) {
-      setTimeout(function() { location.reload(); }, 4000);
+    // ── Phase 2 : fichier reçu par le serveur, traitement en arrière-plan ──
+    xhr.upload.addEventListener('load', function() {
+      setProgress(100, 'Fichier reçu — traitement en cours…',
+        '<i class="fas fa-cogs fa-spin me-1"></i>Analyse et insertion des données…',
+        'bg-warning text-dark');
+    });
 
-      // Afficher une bannière d'information
-      const banner = document.createElement('div');
-      banner.className = 'alert alert-info alert-dismissible py-2 mb-3';
-      banner.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Import en cours — la page se rafraîchit automatiquement…'
-        + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-      document.querySelector('section').prepend(banner);
-    }
-    /*]]>*/
+    // ── Réponse reçue (après redirect) : lancer le polling ─────────────────
+    xhr.addEventListener('load', function() {
+      if (xhr.status >= 400) {
+        progressBar.className = 'progress-bar bg-danger';
+        progressLbl.textContent = 'Erreur lors de l\'import.';
+        progressStp.innerHTML = '<i class="fas fa-times-circle text-danger me-1"></i>Une erreur est survenue.';
+        submitBtn.disabled = false;
+        return;
+      }
+      // L'import asynchrone tourne — on poll jusqu'à la fin
+      demarrerPolling();
+    });
+
+    xhr.addEventListener('error', function() {
+      progressBar.className = 'progress-bar bg-danger';
+      progressLbl.textContent = 'Erreur réseau.';
+      submitBtn.disabled = false;
+    });
+
+    xhr.open('POST', form.action);
+    xhr.send(formData);
+  });
+
+  // ─── Polling : attend que plus aucun import ne soit EN_COURS ────────────────
+  function demarrerPolling() {
+    let tentatives = 0;
+    const maxTentatives = 120; // 10 minutes max (120 × 5s)
+    const dots = ['', '.', '..', '...'];
+
+    const interval = setInterval(function() {
+      tentatives++;
+      const dot = dots[tentatives % dots.length];
+
+      setProgress(100,
+        'Traitement en cours' + dot,
+        '<i class="fas fa-cogs fa-spin me-1"></i>Insertion des données en base…',
+        'bg-warning text-dark');
+
+      if (tentatives >= maxTentatives) {
+        clearInterval(interval);
+        progressStp.innerHTML = '<i class="fas fa-exclamation-triangle text-warning me-1"></i>Délai dépassé — vérifiez le statut.';
+        submitBtn.disabled = false;
+        return;
+      }
+
+      fetch('/import/en-cours')
+        .then(r => r.json())
+        .then(data => {
+          if (data.count === 0) {
+            clearInterval(interval);
+            setProgressTermine();
+            setTimeout(function() { location.reload(); }, 1500);
+          }
+        })
+        .catch(() => { /* réseau temporairement indisponible, on réessaie */ });
+
+    }, 5000); // toutes les 5 secondes
+  }
+
+  // ─── Auto-refresh si déjà EN_COURS au chargement (import lancé depuis autre onglet) ─
+  const hasEnCours = /*[[${imports.?[statut.name() == 'EN_COURS'].size() > 0}]]*/ false;
+  if (hasEnCours) {
+    demarrerPolling();
+
+    const banner = document.createElement('div');
+    banner.className = 'alert alert-info py-2 mb-3';
+    banner.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Un import est en cours — cette page se mettra à jour automatiquement.';
+    document.querySelector('section').prepend(banner);
+  }
+
+  // ─── Utilitaire : formater la taille ────────────────────────────────────────
+  function formatSize(bytes) {
+    if (bytes < 1024)       return bytes + ' o';
+    if (bytes < 1048576)    return (bytes / 1024).toFixed(1) + ' Ko';
+    return (bytes / 1048576).toFixed(1) + ' Mo';
+  }
+
+  /*]]>*/
   </script>
 
 </section>

@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/import")
@@ -91,6 +92,14 @@ public class ImportController {
             redirectAttributes.addFlashAttribute("erreur", "Erreur lors de la suppression : " + e.getMessage());
         }
         return "redirect:/import";
+    }
+
+    /** Retourne le nombre d'imports EN_COURS — utilisé par le polling JS de la barre de progression. */
+    @GetMapping("/en-cours")
+    @ResponseBody
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, Long> importsEnCours() {
+        return Map.of("count", importService.countImportsEnCours());
     }
 
     @GetMapping("/historique")

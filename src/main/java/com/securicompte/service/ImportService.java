@@ -462,4 +462,8 @@ public class ImportService {
     public List<ImportFichier> getImportsByAnnee(Integer annee) {
         return importFichierRepository.findByAnneeOrderByMoisDesc(annee);
     }
+
+    public long countImportsEnCours() {
+        return importFichierRepository.countByStatut(StatutImport.EN_COURS);
+    }
 }
