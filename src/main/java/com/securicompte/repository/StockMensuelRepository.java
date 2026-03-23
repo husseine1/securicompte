@@ -16,7 +16,7 @@ public interface StockMensuelRepository extends JpaRepository<StockMensuel, Long
     List<StockMensuel> findByAnneeAndMois(Integer annee, Integer mois);
     List<StockMensuel> findByClientIdOrderByAnneeDescMoisDesc(Long clientId);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM StockMensuel s WHERE s.annee = :annee AND s.mois = :mois")
     void deleteBulkByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 

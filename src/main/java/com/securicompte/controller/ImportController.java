@@ -55,18 +55,16 @@ public class ImportController {
         }
 
         try {
-            ImportResultDto result = importService.importerFichier(fichier, annee, mois, currentUser);
-            if (result.isSucces()) {
-                redirectAttributes.addFlashAttribute("succes",
-                    String.format("Import réussi ! Stock: %d clients, %d impayés détectés",
-                        result.getNbStock(), result.getNbImpaYesDetectes()));
-            } else {
-                redirectAttributes.addFlashAttribute("erreur",
-                    "Erreur lors de l'import: " + result.getMessageErreur());
-            }
-            redirectAttributes.addFlashAttribute("dernierImport", result);
+            // Copier les bytes avant l'appel async (le MultipartFile devient invalide après la requête HTTP)
+            byte[] fileBytes   = fichier.getBytes();
+            String contentType = fichier.getContentType();
+
+            importService.importerFichierAsync(fileBytes, filename, contentType, annee, mois, currentUser);
+            redirectAttributes.addFlashAttribute("succes",
+                "Import lancé en arrière-plan pour " + mois + "/" + annee +
+                " — la page se rafraîchira automatiquement.");
         } catch (Exception e) {
-            log.error("Erreur import fichier", e);
+            log.error("Erreur lancement import fichier", e);
             redirectAttributes.addFlashAttribute("erreur", "Erreur inattendue: " + e.getMessage());
         }
 
@@ -86,9 +84,9 @@ public class ImportController {
         try {
             ImportFichier imp = importService.getImportById(id);
             String periode = imp.getMois() + "/" + imp.getAnnee();
-            importService.supprimerImport(id);
+            importService.supprimerImportAsync(id);
             redirectAttributes.addFlashAttribute("succes",
-                "Suppression réussie — l'import " + periode + " et toutes ses données ont été retirés.");
+                "Suppression de l'import " + periode + " lancée — la page se rafraîchira automatiquement.");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("erreur", "Erreur lors de la suppression : " + e.getMessage());
         }

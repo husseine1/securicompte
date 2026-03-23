@@ -94,7 +94,7 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     @Query("SELECT i.client.id FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois")
     List<Long> findClientIdsWithImpayeForMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 

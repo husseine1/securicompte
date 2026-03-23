@@ -20,7 +20,7 @@ public interface SouscriptionRepository extends JpaRepository<Souscription, Long
     @Query("SELECT CONCAT(CAST(s.client.id AS string), '_', CAST(s.datSouscription AS string), '_', s.typeSouscription) FROM Souscription s WHERE s.typeSouscription = :type AND s.client.id IN :clientIds")
     List<String> findExistingKeysForClients(@Param("type") TypeSouscription type, @Param("clientIds") java.util.Collection<Long> clientIds);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM Souscription s WHERE s.importFichier.id = :importFichierId")
     void deleteByImportFichierId(@Param("importFichierId") Long importFichierId);
 

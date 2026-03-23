@@ -153,12 +153,28 @@
 
   </div>
 
-  <script>
+  <script th:inline="javascript">
+    /*<![CDATA[*/
+    // Spinner sur le bouton submit
     document.getElementById('importForm').addEventListener('submit', function() {
       document.getElementById('btnText').classList.add('d-none');
       document.getElementById('btnSpinner').classList.remove('d-none');
       document.getElementById('submitBtn').disabled = true;
     });
+
+    // Auto-refresh toutes les 4 secondes si un import est EN_COURS
+    const hasEnCours = /*[[${imports.?[statut.name() == 'EN_COURS'].size() > 0}]]*/ false;
+    if (hasEnCours) {
+      setTimeout(function() { location.reload(); }, 4000);
+
+      // Afficher une bannière d'information
+      const banner = document.createElement('div');
+      banner.className = 'alert alert-info alert-dismissible py-2 mb-3';
+      banner.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Import en cours — la page se rafraîchit automatiquement…'
+        + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+      document.querySelector('section').prepend(banner);
+    }
+    /*]]>*/
   </script>
 
 </section>

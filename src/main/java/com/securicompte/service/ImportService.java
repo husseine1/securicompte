@@ -5,6 +5,8 @@ import com.securicompte.entity.*;
 import com.securicompte.enums.StatutImport;
 import com.securicompte.enums.TypeSouscription;
 import com.securicompte.repository.*;
+import com.securicompte.util.ByteArrayMultipartFile;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,22 @@ public class ImportService {
     private final StockMensuelRepository   stockMensuelRepository;
     private final ImpayeRepository         impayeRepository;
     private final PlatformTransactionManager transactionManager;
+
+    /**
+     * Version asynchrone : lance l'import dans un thread dédié et retourne immédiatement.
+     * Le statut EN_COURS est visible dans l'historique ; la page se rafraîchit automatiquement.
+     * Les bytes du fichier sont copiés avant l'appel pour survivre à la fin de la requête HTTP.
+     */
+    @Async
+    public void importerFichierAsync(byte[] fileBytes, String filename, String contentType,
+                                     Integer annee, Integer mois, User importePar) {
+        MultipartFile file = new ByteArrayMultipartFile(fileBytes, filename, contentType);
+        try {
+            importerFichier(file, annee, mois, importePar);
+        } catch (Exception e) {
+            log.error("Erreur import asynchrone: {}", e.getMessage(), e);
+        }
+    }
 
     /**
      * Point d'entrée principal de l'import.
@@ -417,10 +435,24 @@ public class ImportService {
     public void supprimerImport(Long importId) {
         ImportFichier imp = importFichierRepository.findById(importId)
             .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + importId));
-        impayeRepository.deleteByAnneeAndMois(imp.getAnnee(), imp.getMois());
-        supprimerDonneesMois(imp.getAnnee(), imp.getMois(), importId);
-        importFichierRepository.deleteById(importId);
-        log.info("Import {}/{} supprimé (id={})", imp.getMois(), imp.getAnnee(), importId);
+        int annee = imp.getAnnee();
+        int mois  = imp.getMois();
+        // Ordre important : supprimer d'abord les enfants (FK), puis le parent
+        impayeRepository.deleteByAnneeAndMois(annee, mois);
+        stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
+        souscriptionRepository.deleteByImportFichierId(importId);
+        importFichierRepository.deleteDirectById(importId);  // DELETE direct, pas de reload
+        log.info("Import {}/{} supprimé (id={})", mois, annee, importId);
+    }
+
+    /** Version asynchrone de la suppression — retourne immédiatement pendant que la suppression s'exécute. */
+    @Async
+    public void supprimerImportAsync(Long importId) {
+        try {
+            supprimerImport(importId);
+        } catch (Exception e) {
+            log.error("Erreur suppression asynchrone import {}: {}", importId, e.getMessage(), e);
+        }
     }
 
     public List<ImportFichier> getTousLesImports() {
