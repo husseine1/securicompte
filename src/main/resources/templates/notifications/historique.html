@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Historique des notifications - Gestion des Impayés</title></head>
+<body>
+<section>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="fw-bold mb-0"><i class="fas fa-bell me-2 text-warning"></i>Historique des notifications</h5>
+      <small class="text-muted" th:text="${notifications.totalElements + ' notification(s) au total'}"></small>
+    </div>
+    <form th:action="@{/notifications/tout-lire}" method="post">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-check-double me-1"></i>Tout marquer comme lu
+      </button>
+    </form>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:140px">Date</th>
+            <th style="width:180px">Type</th>
+            <th>Message</th>
+            <th style="width:140px">Client</th>
+            <th style="width:80px">Statut</th>
+            <th style="width:110px">Lu par</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr th:each="n : ${notifications}" th:classappend="${!n.lu} ? 'table-warning fw-semibold' : ''">
+            <td style="font-size:12px" th:text="${n.createdAt}"></td>
+            <td>
+              <span class="badge"
+                    th:classappend="${n.type == 'CHANGEMENT_PRIME'} ? 'bg-warning text-dark' :
+                                    (${n.type == 'CHANGEMENT_PRIME_IMPORT'} ? 'bg-info text-dark' :
+                                    (${n.type == 'IMPAYE_ANCIEN'} ? 'bg-danger' : 'bg-secondary'))"
+                    th:text="${n.type}"></span>
+            </td>
+            <td style="font-size:13px" th:text="${n.message}"></td>
+            <td>
+              <span th:if="${n.clientNom != null}">
+                <a th:if="${n.clientId != null}"
+                   th:href="@{/clients/{id}(id=${n.clientId})}"
+                   class="text-decoration-none small" th:text="${n.clientNom}"></a>
+                <span th:if="${n.clientId == null}" class="small" th:text="${n.clientNom}"></span>
+              </span>
+              <span th:if="${n.clientNom == null}" class="text-muted small">—</span>
+            </td>
+            <td>
+              <span th:if="${n.lu}" class="badge bg-success"><i class="fas fa-check me-1"></i>Lu</span>
+              <span th:if="${!n.lu}" class="badge bg-warning text-dark"><i class="fas fa-circle me-1"></i>Non lu</span>
+            </td>
+            <td style="font-size:12px">
+              <span th:if="${n.luPar != null}" th:text="${n.luPar}"></span>
+              <span th:if="${n.luPar == null}" class="text-muted">—</span>
+            </td>
+          </tr>
+          <tr th:if="${notifications.empty}">
+            <td colspan="6" class="text-center text-muted py-5">
+              <i class="fas fa-bell-slash fa-3x mb-2 d-block"></i>
+              Aucune notification enregistrée.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="card-footer bg-white border-0 d-flex justify-content-between align-items-center"
+         th:if="${notifications.totalPages > 1}">
+      <small class="text-muted">
+        Page <span th:text="${notifications.number + 1}"></span> /
+        <span th:text="${notifications.totalPages}"></span>
+      </small>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          <li class="page-item" th:classappend="${notifications.first} ? 'disabled'">
+            <a class="page-link" th:href="@{/notifications/historique(page=${notifications.number - 1})}">&laquo;</a>
+          </li>
+          <li class="page-item" th:classappend="${notifications.last} ? 'disabled'">
+            <a class="page-link" th:href="@{/notifications/historique(page=${notifications.number + 1})}">&raquo;</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+</section>
+</body>
+</html>

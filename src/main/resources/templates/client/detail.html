@@ -79,6 +79,34 @@
 
     <!-- Onglets historique -->
     <div class="col-lg-8">
+
+      <!-- KPI mini-cards -->
+      <div th:with="nbTotal=${client.impayes.size()}">
+        <div th:with="nbReg=${#lists.size(client.impayes.?[statut != null and statut.name() == 'REGULARISE'])}">
+          <div class="row g-2 mb-3">
+            <div class="col-4">
+              <div class="card border-0 shadow-sm text-center py-2">
+                <div class="fw-bold fs-5 text-danger" th:text="${client.nbImpayes}">0</div>
+                <div class="text-muted" style="font-size:11px;text-transform:uppercase">Impayés actifs</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="card border-0 shadow-sm text-center py-2">
+                <div class="fw-bold fs-5 text-success" th:text="${nbReg}">0</div>
+                <div class="text-muted" style="font-size:11px;text-transform:uppercase">Régularisés</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="card border-0 shadow-sm text-center py-2">
+                <div class="fw-bold fs-5" style="color:#7c3aed"
+                     th:text="${nbTotal > 0 ? #numbers.formatDecimal(nbReg * 100.0 / nbTotal, 1, 1) + '%' : '–'}">–</div>
+                <div class="text-muted" style="font-size:11px;text-transform:uppercase">Taux régul.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <ul class="nav nav-tabs mb-3" id="clientTabs">
         <li class="nav-item">
           <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-impayes">
@@ -105,7 +133,7 @@
           <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
               <table class="table table-hover mb-0">
-                <thead><tr><th>Période</th><th>Statut</th><th>Securicompte</th><th>Commission</th><th>Détecté</th><th>Régularisé</th></tr></thead>
+                <thead><tr><th>Période</th><th>Statut</th><th>Securicompte</th><th>Commission</th><th>Détecté</th><th>Régularisé</th><th sec:authorize="hasAnyRole('ROLE_ADMIN','ROLE_AGENT')"></th></tr></thead>
                 <tbody>
                   <tr th:each="imp : ${client.impayes}">
                     <td><span class="badge bg-secondary" th:text="${imp.moisNom + ' ' + imp.annee}"></span></td>
@@ -121,9 +149,21 @@
                         th:text="${imp.dateDetection != null ? #temporals.format(imp.dateDetection,'dd/MM/yyyy') : '-'}"></td>
                     <td style="font-size:12px"
                         th:text="${imp.dateRegularisation != null ? #temporals.format(imp.dateRegularisation,'dd/MM/yyyy') : '-'}"></td>
+                    <td sec:authorize="hasAnyRole('ROLE_ADMIN','ROLE_AGENT')">
+                      <button th:if="${imp.statut?.name() == 'IMPAYE'}"
+                              class="btn btn-sm btn-outline-success py-0 px-2 btn-regulariser"
+                              th:data-id="${imp.id}" title="Régulariser">
+                        <i class="fas fa-check"></i>
+                      </button>
+                      <button th:if="${imp.statut?.name() == 'REGULARISE' or imp.statut?.name() == 'LITIGE'}"
+                              class="btn btn-sm btn-outline-danger py-0 px-2 btn-marquer-impaye"
+                              th:data-id="${imp.id}" title="Remettre en impayé">
+                        <i class="fas fa-undo"></i>
+                      </button>
+                    </td>
                   </tr>
                   <tr th:if="${client.impayes.empty}">
-                    <td colspan="6" class="text-center text-success py-3">
+                    <td colspan="7" class="text-center text-success py-3">
                       <i class="fas fa-check-circle me-1"></i>Aucun impayé enregistré
                     </td>
                   </tr>
@@ -211,6 +251,39 @@
       </div>
     </div>
   </div>
+
+  <script>
+  const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
+  const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
+
+  document.querySelectorAll('.btn-regulariser').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.dataset.id;
+      if (!confirm('Confirmer la régularisation de cet impayé ?')) return;
+      fetch(`/impayes/${id}/regulariser`, {
+        method: 'POST',
+        headers: { [csrfHeader]: csrfToken }
+      }).then(r => r.text()).then(res => {
+        if (res === 'OK') location.reload();
+        else alert('Erreur lors de la régularisation.');
+      });
+    });
+  });
+
+  document.querySelectorAll('.btn-marquer-impaye').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.dataset.id;
+      if (!confirm('Remettre cet enregistrement en statut IMPAYÉ ?')) return;
+      fetch(`/impayes/${id}/marquer-impaye`, {
+        method: 'POST',
+        headers: { [csrfHeader]: csrfToken }
+      }).then(r => r.text()).then(res => {
+        if (res === 'OK') location.reload();
+        else alert('Erreur lors de la mise à jour.');
+      });
+    });
+  });
+  </script>
 </section>
 </body>
 </html>

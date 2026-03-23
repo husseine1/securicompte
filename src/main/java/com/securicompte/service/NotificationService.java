@@ -117,6 +117,12 @@ public class NotificationService {
     }
 
     @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Notification> getAll(
+            org.springframework.data.domain.Pageable pageable) {
+        return notificationRepository.findAllByOrderByCreatedAtDesc(pageable);
+    }
+
+    @Transactional(readOnly = true)
     public long getNbNonLues() {
         return notificationRepository.countByLuFalse();
     }

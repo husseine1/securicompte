@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -59,7 +61,16 @@ public class ImpayeService {
 
     @Transactional(readOnly = true)
     public DashboardStatsDto getDashboardStats() {
-        long totalImpayes = impayeRepository.countImpayes();
+        // Comptage par statut → taux de régularisation
+        Map<String, Long> parStatut = new HashMap<>();
+        impayeRepository.countParStatut().forEach(row -> {
+            if (row[0] != null) parStatut.put(row[0].toString(), ((Number) row[1]).longValue());
+        });
+        long totalImpayes    = parStatut.getOrDefault("IMPAYE",    0L);
+        long totalRegularises = parStatut.getOrDefault("REGULARISE", 0L);
+        long totalComptable  = totalImpayes + totalRegularises;
+        double tauxReg = totalComptable > 0 ? totalRegularises * 100.0 / totalComptable : 0.0;
+
         long totalClientsAvecImpayes = impayeRepository.countClientsAvecImpayes();
 
         List<StatMoisDto> statsParMois = impayeRepository.countImpaYesParMois().stream()
@@ -82,11 +93,25 @@ public class ImpayeService {
                 .build())
             .collect(Collectors.toList());
 
+        // Top 10 clients avec le plus d'impayés actifs
+        List<Top10ClientDto> top10 = impayeRepository
+            .findClientsAvecPlusImpayes(StatutImpaye.IMPAYE).stream()
+            .limit(10)
+            .map(row -> Top10ClientDto.builder()
+                .nom(row[0] != null ? row[0].toString() : "-")
+                .numeroClient(row[1] != null ? row[1].toString() : "-")
+                .nbImpayes(((Number) row[2]).longValue())
+                .build())
+            .collect(Collectors.toList());
+
         return DashboardStatsDto.builder()
             .totalImpayes(totalImpayes)
+            .totalRegularises(totalRegularises)
+            .tauxRegularisation(tauxReg)
             .totalClientsAvecImpayes(totalClientsAvecImpayes)
             .statsParMois(statsParMois)
             .statsParAgence(statsParAgence)
+            .top10Clients(top10)
             .build(); // totalClients et totalImportsFaits sont renseignés par DashboardController
     }
 

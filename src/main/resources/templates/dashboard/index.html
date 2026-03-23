@@ -6,54 +6,66 @@
 <section>
 
   <!-- Stats Cards -->
-  <div class="row g-3 mb-4">
-    <div class="col-md-3">
+  <div class="row row-cols-2 row-cols-md-5 g-3 mb-4">
+    <div class="col">
       <div class="card stat-card">
         <div class="card-body d-flex align-items-center gap-3">
           <div class="icon-wrap" style="background:#dbeafe"><i class="fas fa-users" style="color:#1d4ed8"></i></div>
           <div>
-            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Total Clients</div>
-            <div class="fs-3 fw-bold" th:text="${stats?.totalClients ?: 0}">0</div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Total Clients</div>
+            <div class="fs-4 fw-bold" th:text="${stats?.totalClients ?: 0}">0</div>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col">
       <div class="card stat-card">
         <div class="card-body d-flex align-items-center gap-3">
           <div class="icon-wrap" style="background:#fee2e2"><i class="fas fa-exclamation-triangle" style="color:#dc2626"></i></div>
           <div>
-            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Impayés actifs</div>
-            <div class="fs-3 fw-bold text-danger" th:text="${stats?.totalImpayes ?: 0}">0</div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Impayés actifs</div>
+            <div class="fs-4 fw-bold text-danger" th:text="${stats?.totalImpayes ?: 0}">0</div>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col">
       <div class="card stat-card">
         <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon-wrap" style="background:#dcfce7"><i class="fas fa-file-import" style="color:#16a34a"></i></div>
+          <div class="icon-wrap" style="background:#dcfce7"><i class="fas fa-check-circle" style="color:#16a34a"></i></div>
           <div>
-            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Fichiers importés</div>
-            <div class="fs-3 fw-bold" th:text="${stats?.totalImportsFaits ?: 0}">0</div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Régularisés</div>
+            <div class="fs-4 fw-bold text-success" th:text="${stats?.totalRegularises ?: 0}">0</div>
           </div>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
+    <div class="col">
+      <div class="card stat-card">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#ede9fe"><i class="fas fa-percent" style="color:#7c3aed"></i></div>
+          <div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Taux régul.</div>
+            <div class="fs-4 fw-bold" style="color:#7c3aed"
+                 th:text="${stats?.tauxRegularisation != null ? #numbers.formatDecimal(stats.tauxRegularisation,1,1) + '%' : '0%'}">0%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
       <div class="card stat-card">
         <div class="card-body d-flex align-items-center gap-3">
           <div class="icon-wrap" style="background:#fef9c3"><i class="fas fa-user-times" style="color:#ca8a04"></i></div>
           <div>
-            <div class="text-muted" style="font-size:12px;text-transform:uppercase">Clients impayés</div>
-            <div class="fs-3 fw-bold text-warning" th:text="${stats?.totalClientsAvecImpayes ?: 0}">0</div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Clients impayés</div>
+            <div class="fs-4 fw-bold text-warning" th:text="${stats?.totalClientsAvecImpayes ?: 0}">0</div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="row g-3">
+  <div class="row g-3 mb-3">
     <!-- Graphique impayés par mois -->
     <div class="col-lg-8">
       <div class="card border-0 shadow-sm">
@@ -86,9 +98,43 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Top 10 clients avec le plus d'impayés -->
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-trophy me-2 text-danger"></i>Top 10 clients — impayés actifs</h6>
+        </div>
+        <div class="card-body p-0">
+          <div th:if="${stats?.top10Clients != null and !stats.top10Clients.empty}">
+            <div th:with="maxNb=${stats.top10Clients[0].nbImpayes}">
+              <div class="px-3 py-2 border-bottom"
+                   th:each="c,iter : ${stats.top10Clients}">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span style="font-size:13px;font-weight:600"
+                        th:text="${iter.index + 1 + '. ' + c.nom}"></span>
+                  <span class="badge bg-danger" th:text="${c.nbImpayes}"></span>
+                </div>
+                <div class="progress" style="height:5px">
+                  <div class="progress-bar bg-danger"
+                       th:style="'width:' + ${maxNb > 0 ? (c.nbImpayes * 100 / maxNb) : 0} + '%'"></div>
+                </div>
+                <div style="font-size:11px;color:#6c757d" th:text="${'N° ' + c.numeroClient}"></div>
+              </div>
+            </div>
+          </div>
+          <div th:if="${stats?.top10Clients == null or stats.top10Clients.empty}"
+               class="text-center py-4 text-muted">
+            <i class="fas fa-trophy fa-2x mb-2 d-block"></i>Aucun impayé actif
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Derniers imports -->
-    <div class="col-12">
+    <div class="col-lg-6">
       <div class="card border-0 shadow-sm">
         <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-3">
           <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2 text-info"></i>Derniers imports</h6>
@@ -99,7 +145,7 @@
             <thead><tr><th>Fichier</th><th>Période</th><th>Stock</th><th>Statut</th><th>Date import</th></tr></thead>
             <tbody>
               <tr th:each="imp : ${stats?.derniersImports}">
-                <td class="text-truncate" style="max-width:200px" th:text="${imp.nomFichier}"></td>
+                <td class="text-truncate" style="max-width:150px" th:text="${imp.nomFichier}"></td>
                 <td><span class="badge bg-secondary" th:text="${imp.mois + '/' + imp.annee}"></span></td>
                 <td th:text="${imp.nbStock}"></td>
                 <td>

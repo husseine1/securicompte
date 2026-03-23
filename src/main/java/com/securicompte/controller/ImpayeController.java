@@ -6,6 +6,7 @@ import com.securicompte.enums.StatutImpaye;
 import com.securicompte.service.ClientService;
 import com.securicompte.service.ExcelExportService;
 import com.securicompte.service.ImpayeService;
+import com.securicompte.service.PdfExportService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,9 +29,10 @@ import java.util.List;
 @Slf4j
 public class ImpayeController {
 
-    private final ImpayeService impayeService;
-    private final ClientService clientService;
+    private final ImpayeService      impayeService;
+    private final ClientService      clientService;
     private final ExcelExportService excelExportService;
+    private final PdfExportService   pdfExportService;
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
@@ -111,6 +113,33 @@ public class ImpayeController {
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=" + filename);
         response.getOutputStream().write(excelData);
+    }
+
+    @GetMapping("/export-pdf")
+    @PreAuthorize("isAuthenticated()")
+    public void exporterPdf(
+            @RequestParam(required = false) Integer annee,
+            @RequestParam(required = false) Integer mois,
+            @RequestParam(required = false) String agence,
+            @RequestParam(required = false) String gestionnaire,
+            @RequestParam(required = false) String statut,
+            HttpServletResponse response) throws IOException {
+
+        FiltreImpayeDto filtre = FiltreImpayeDto.builder()
+            .annee(annee)
+            .mois(mois)
+            .agence(agence != null && !agence.isBlank() ? agence : null)
+            .gestionnaire(gestionnaire != null && !gestionnaire.isBlank() ? gestionnaire : null)
+            .statut(statut != null && !statut.isEmpty() ? StatutImpaye.valueOf(statut) : null)
+            .build();
+
+        List<ImpayeDto> impayes = impayeService.getImpaYesForExport(filtre);
+        byte[] pdfData = pdfExportService.exporterImpayes(impayes);
+
+        String filename = "impayes_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".pdf";
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + filename);
+        response.getOutputStream().write(pdfData);
     }
 
     private List<String[]> getMoisList() {

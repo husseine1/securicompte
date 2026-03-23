@@ -98,6 +98,27 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     @Query("DELETE FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
+    /**
+     * Impayés anciens non régularisés : (annee*12+mois) <= limitePeriode.
+     * Utilisé par les alertes automatiques quotidiennes.
+     */
+    @Query("SELECT i FROM Impaye i JOIN FETCH i.client WHERE i.statut = :statut AND (i.annee * 12 + i.mois) <= :limitePeriode")
+    List<Impaye> findImpaYesAnciens(@Param("statut") StatutImpaye statut, @Param("limitePeriode") int limitePeriode);
+
+    /** Comptage par statut — utilisé pour le taux de régularisation du dashboard. */
+    @Query("SELECT i.statut, COUNT(i) FROM Impaye i GROUP BY i.statut")
+    List<Object[]> countParStatut();
+
+    /** Top clients avec le plus d'impayés actifs (limiter à 10 en Java). */
+    @Query("""
+        SELECT c.nom, c.numeroClient, COUNT(i)
+        FROM Impaye i JOIN i.client c
+        WHERE i.statut = :statut
+        GROUP BY c.id, c.nom, c.numeroClient
+        ORDER BY COUNT(i) DESC
+        """)
+    List<Object[]> findClientsAvecPlusImpayes(@Param("statut") StatutImpaye statut);
+
     @Modifying(clearAutomatically = true)
     @Query("""
         UPDATE Impaye i SET i.statut = :newStatut, i.dateRegularisation = :now, i.commentaire = :comment

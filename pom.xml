@@ -114,6 +114,13 @@
             <version>1.5.5.Final</version>
         </dependency>
 
+        <!-- OpenPDF - Export PDF -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.30</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

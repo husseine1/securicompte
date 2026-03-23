@@ -91,6 +91,18 @@
                 <i class="fas fa-file-excel"></i>Export Excel
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link" th:href="@{/impayes/export-pdf}">
+                <i class="fas fa-file-pdf"></i>Export PDF
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/notifications/historique')} ? 'active'"
+               th:href="@{/notifications/historique}">
+                <i class="fas fa-history"></i>Historique notif.
+            </a>
+        </li>
         <li class="nav-section-title" sec:authorize="hasRole('ROLE_ADMIN')">ADMINISTRATION</li>
         <li class="nav-item" sec:authorize="hasRole('ROLE_ADMIN')">
             <a class="nav-link"
