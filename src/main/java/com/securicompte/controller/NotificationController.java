@@ -63,4 +63,14 @@ public class NotificationController {
         model.addAttribute("page", page);
         return "notifications/historique";
     }
+
+    /** Marquer une notification comme lue depuis la page historique (redirige). */
+    @PostMapping("/{id}/lire-redirect")
+    @PreAuthorize("isAuthenticated()")
+    public String marquerLueRedirect(@PathVariable Long id,
+                                     @AuthenticationPrincipal User user,
+                                     @RequestParam(defaultValue = "0") int page) {
+        notificationService.marquerLue(id, user.getUsername());
+        return "redirect:/notifications/historique?page=" + page;
+    }
 }

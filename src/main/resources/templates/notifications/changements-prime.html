@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Changements de prime - Gestion des Impayés</title></head>
+<body>
+<section>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="fw-bold mb-0">
+        <i class="fas fa-exchange-alt me-2 text-warning"></i>
+        Changements de prime —
+        <span th:text="${mois + '/' + annee}" class="text-primary"></span>
+      </h5>
+      <small class="text-muted">
+        <span th:text="${changements.size()}"></span> client(s) avec écart entre la prime à la souscription et la prime du stock importé
+      </small>
+    </div>
+    <a href="/notifications/historique" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Retour aux notifications
+    </a>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0" style="font-size:13px">
+          <thead class="table-light">
+            <tr>
+              <th>N° Client</th>
+              <th>Nom</th>
+              <th>Agence</th>
+              <th>Gestionnaire</th>
+              <th style="width:110px">Date souscription</th>
+              <th style="width:150px">Securicompte (avant → après)</th>
+              <th style="width:170px">Commissions (avant → après)</th>
+              <th style="width:60px">Détail</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="c : ${changements}">
+
+              <td class="fw-semibold" th:text="${c.numeroClient}"></td>
+
+              <td th:text="${c.nomClient}"></td>
+
+              <td>
+                <span th:if="${c.agenceLib != null}" th:text="${c.agenceLib}"></span>
+                <span th:if="${c.agenceLib == null}" class="text-muted">—</span>
+              </td>
+
+              <td>
+                <span th:if="${c.gestionnaire != null}" th:text="${c.gestionnaire}"></span>
+                <span th:if="${c.gestionnaire == null}" class="text-muted">—</span>
+              </td>
+
+              <td>
+                <span th:if="${c.dateSouscription != null}"
+                      th:text="${#temporals.format(c.dateSouscription, 'dd/MM/yyyy')}"></span>
+                <span th:if="${c.dateSouscription == null}" class="text-muted">—</span>
+              </td>
+
+              <!-- Securicompte avant → après -->
+              <td class="text-nowrap">
+                <span th:classappend="${c.securicompteAvant != c.securicompteApres} ? 'text-danger' : ''"
+                      th:text="${c.securicompteAvant != null ? c.securicompteAvant : 'N/A'}"></span>
+                <i class="fas fa-arrow-right text-muted mx-1" style="font-size:10px"></i>
+                <span th:classappend="${c.securicompteAvant != c.securicompteApres} ? 'text-success fw-semibold' : ''"
+                      th:text="${c.securicompteApres != null ? c.securicompteApres : 'N/A'}"></span>
+              </td>
+
+              <!-- Commissions avant → après -->
+              <td class="text-nowrap">
+                <span th:classappend="${c.commissionsAvant != c.commissionsApres} ? 'text-danger' : ''"
+                      th:text="${c.commissionsAvant != null ? c.commissionsAvant : 'N/A'}"></span>
+                <i class="fas fa-arrow-right text-muted mx-1" style="font-size:10px"></i>
+                <span th:classappend="${c.commissionsAvant != c.commissionsApres} ? 'text-success fw-semibold' : ''"
+                      th:text="${c.commissionsApres != null ? c.commissionsApres : 'N/A'}"></span>
+              </td>
+
+              <!-- Lien fiche client -->
+              <td>
+                <a th:if="${c.clientId != null}"
+                   th:href="@{/clients/{id}(id=${c.clientId})}"
+                   class="btn btn-sm btn-outline-primary py-0 px-2" title="Voir la fiche client">
+                  <i class="fas fa-user"></i>
+                </a>
+              </td>
+
+            </tr>
+            <tr th:if="${changements.empty}">
+              <td colspan="8" class="text-center text-muted py-5">
+                <i class="fas fa-check-circle fa-3x text-success mb-2 d-block"></i>
+                Aucun écart de prime détecté pour cette période.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white border-0" th:if="${!changements.empty}">
+      <small class="text-muted">
+        <i class="fas fa-info-circle me-1"></i>
+        <strong>Avant</strong> = prime à la date de souscription &nbsp;|&nbsp;
+        <strong>Après</strong> = prime dans le stock importé <span th:text="${mois + '/' + annee}"></span>
+      </small>
+    </div>
+  </div>
+
+</section>
+</body>
+</html>

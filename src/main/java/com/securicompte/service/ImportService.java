@@ -1,5 +1,6 @@
 package com.securicompte.service;
 
+import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
 import com.securicompte.entity.*;
 import com.securicompte.enums.StatutImport;
@@ -231,9 +232,22 @@ public class ImportService {
             }
         }
         if (!nouveaux.isEmpty()) {
-            List<Client> saved = clientRepository.saveAll(nouveaux);
-            saved.forEach(c -> cache.put(c.getNumeroClient(), c));
-            log.info("{} nouveau(x) client(s) créé(s)", saved.size());
+            // Double-check en base pour éviter les violations de contrainte unique
+            // (les clients peuvent avoir été créés par un import concurrent ou un import précédent)
+            List<String> numerosNouveaux = nouveaux.stream()
+                .map(Client::getNumeroClient).filter(Objects::nonNull).collect(Collectors.toList());
+            for (int i = 0; i < numerosNouveaux.size(); i += 5000) {
+                List<String> batch = numerosNouveaux.subList(i, Math.min(i + 5000, numerosNouveaux.size()));
+                clientRepository.findByNumeroClientIn(batch).forEach(c -> cache.put(c.getNumeroClient(), c));
+            }
+            List<Client> vraiNouveaux = nouveaux.stream()
+                .filter(c -> c.getNumeroClient() != null && !cache.containsKey(c.getNumeroClient()))
+                .collect(Collectors.toList());
+            if (!vraiNouveaux.isEmpty()) {
+                List<Client> saved = clientRepository.saveAll(vraiNouveaux);
+                saved.forEach(c -> cache.put(c.getNumeroClient(), c));
+                log.info("{} nouveau(x) client(s) créé(s)", saved.size());
+            }
         }
 
         log.info("Cache clients: {} clients chargés/créés", cache.size());
@@ -352,6 +366,8 @@ public class ImportService {
     }
 
     private void supprimerDonneesMois(Integer annee, Integer mois, Long importFichierId) {
+        impayeRepository.deleteByAnneeAndMois(annee, mois);
+        log.info("Suppression bulk impayés {}/{}", mois, annee);
         stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
         log.info("Suppression bulk stock {}/{}", mois, annee);
         souscriptionRepository.deleteByImportFichierId(importFichierId);
@@ -431,25 +447,41 @@ public class ImportService {
             .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + id));
     }
 
+    /**
+     * Marque l'import EN_COURS (synchrone, commité avant le retour au contrôleur)
+     * afin que le polling JS détecte la suppression en cours au rechargement de page.
+     */
     @Transactional
-    public void supprimerImport(Long importId) {
+    public String preparerSuppression(Long importId) {
         ImportFichier imp = importFichierRepository.findById(importId)
             .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + importId));
-        int annee = imp.getAnnee();
-        int mois  = imp.getMois();
-        // Ordre important : supprimer d'abord les enfants (FK), puis le parent
-        impayeRepository.deleteByAnneeAndMois(annee, mois);
-        stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
-        souscriptionRepository.deleteByImportFichierId(importId);
-        importFichierRepository.deleteDirectById(importId);  // DELETE direct, pas de reload
-        log.info("Import {}/{} supprimé (id={})", mois, annee, importId);
+        String periode = imp.getMois() + "/" + imp.getAnnee();
+        imp.setStatut(StatutImport.EN_COURS);
+        importFichierRepository.save(imp);
+        return periode;
     }
 
-    /** Version asynchrone de la suppression — retourne immédiatement pendant que la suppression s'exécute. */
+    /**
+     * Suppression asynchrone d'un import et de toutes ses données associées.
+     * Utilise TransactionTemplate pour contourner la limitation de self-invocation
+     * Spring AOP (appel this.method() bypass le proxy → @Transactional ignoré).
+     * Ordre FK : impayés → stock → souscriptions → import_fichier.
+     */
     @Async
     public void supprimerImportAsync(Long importId) {
         try {
-            supprimerImport(importId);
+            new TransactionTemplate(transactionManager).execute(status -> {
+                ImportFichier imp = importFichierRepository.findById(importId)
+                    .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + importId));
+                int annee = imp.getAnnee();
+                int mois  = imp.getMois();
+                impayeRepository.deleteByAnneeAndMois(annee, mois);
+                stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
+                souscriptionRepository.deleteByImportFichierId(importId);
+                importFichierRepository.deleteDirectById(importId);
+                log.info("Import {}/{} supprimé (id={})", mois, annee, importId);
+                return null;
+            });
         } catch (Exception e) {
             log.error("Erreur suppression asynchrone import {}: {}", importId, e.getMessage(), e);
         }
@@ -465,5 +497,55 @@ public class ImportService {
 
     public long countImportsEnCours() {
         return importFichierRepository.countByStatut(StatutImport.EN_COURS);
+    }
+
+    /**
+     * Relit la comparaison stock importé vs souscription pour un mois donné
+     * et retourne la liste complète des clients avec écart de prime.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<ChangementPrimeDto> getChangementsPrime(int annee, int mois) {
+        List<StockMensuel> stocks = stockMensuelRepository.findByAnneeAndMoisWithClient(annee, mois);
+        if (stocks.isEmpty()) return List.of();
+
+        List<Long> clientIds = stocks.stream()
+            .map(s -> s.getClient().getId())
+            .distinct()
+            .collect(Collectors.toList());
+
+        Map<Long, Souscription> souscriptionParClient = new HashMap<>();
+        int batchSize = 1000;
+        for (int i = 0; i < clientIds.size(); i += batchSize) {
+            List<Long> batch = clientIds.subList(i, Math.min(i + batchSize, clientIds.size()));
+            souscriptionRepository.findAllByClientIdsOrderByDateDesc(batch)
+                .forEach(s -> souscriptionParClient.putIfAbsent(s.getClient().getId(), s));
+        }
+
+        List<ChangementPrimeDto> result = new ArrayList<>();
+        for (StockMensuel stock : stocks) {
+            Souscription souscription = souscriptionParClient.get(stock.getClient().getId());
+            if (souscription == null) continue;
+
+            String scAvant   = nvl(souscription.getSecuricompte());
+            String scApres   = nvl(stock.getSecuricompte());
+            String commAvant = nvl(souscription.getCommissions());
+            String commApres = nvl(stock.getCommissions());
+
+            if (!scAvant.equals(scApres) || !commAvant.equals(commApres)) {
+                result.add(ChangementPrimeDto.builder()
+                    .clientId(stock.getClient().getId())
+                    .numeroClient(stock.getClient().getNumeroClient())
+                    .nomClient(stock.getClient().getNom())
+                    .agenceLib(stock.getClient().getAgenceLib())
+                    .gestionnaire(stock.getClient().getGestionnaire())
+                    .dateSouscription(souscription.getDatSouscription())
+                    .securicompteAvant(souscription.getSecuricompte())
+                    .securicompteApres(stock.getSecuricompte())
+                    .commissionsAvant(souscription.getCommissions())
+                    .commissionsApres(stock.getCommissions())
+                    .build());
+            }
+        }
+        return result;
     }
 }

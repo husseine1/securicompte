@@ -1,7 +1,7 @@
 package com.securicompte.controller;
 
+import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
-import com.securicompte.entity.ImportFichier;
 import com.securicompte.entity.User;
 import com.securicompte.service.ImportService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @Controller
@@ -83,8 +84,7 @@ public class ImportController {
     @PreAuthorize("hasRole('ADMIN')")
     public String supprimerImport(@PathVariable Long id, RedirectAttributes redirectAttributes) {
         try {
-            ImportFichier imp = importService.getImportById(id);
-            String periode = imp.getMois() + "/" + imp.getAnnee();
+            String periode = importService.preparerSuppression(id);
             importService.supprimerImportAsync(id);
             redirectAttributes.addFlashAttribute("succes",
                 "Suppression de l'import " + periode + " lancée — la page se rafraîchira automatiquement.");
@@ -105,5 +105,16 @@ public class ImportController {
     @GetMapping("/historique")
     public String historique() {
         return "redirect:/import";
+    }
+
+    /** Détail des clients avec changement de prime pour un mois donné. */
+    @GetMapping("/{annee}/{mois}/changements-prime")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    public String changementsPrime(@PathVariable int annee, @PathVariable int mois, Model model) {
+        List<ChangementPrimeDto> changements = importService.getChangementsPrime(annee, mois);
+        model.addAttribute("changements", changements);
+        model.addAttribute("annee", annee);
+        model.addAttribute("mois", mois);
+        return "notifications/changements-prime";
     }
 }
