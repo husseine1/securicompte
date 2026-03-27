@@ -85,6 +85,13 @@
                 <i class="fas fa-exclamation-triangle"></i>Impayés
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/sinistre')} ? 'active'"
+               th:href="@{/sinistre/import}">
+                <i class="fas fa-file-medical"></i>Import Sinistres
+            </a>
+        </li>
         <li class="nav-section-title">OUTILS</li>
         <li class="nav-item">
             <a class="nav-link" th:href="@{/impayes/export}">

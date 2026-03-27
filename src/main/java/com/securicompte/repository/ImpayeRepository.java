@@ -98,6 +98,18 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     @Query("DELETE FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        DELETE FROM Impaye i WHERE i.client.id = :clientId
+        AND (i.annee > :annee OR (i.annee = :annee AND i.mois >= :mois))
+        AND i.statut = 'IMPAYE'
+        """)
+    void deleteImpaYesFromPeriode(
+        @Param("clientId") Long clientId,
+        @Param("annee") int annee,
+        @Param("mois") int mois
+    );
+
     /**
      * Impayés anciens non régularisés : (annee*12+mois) <= limitePeriode.
      * Utilisé par les alertes automatiques quotidiennes.

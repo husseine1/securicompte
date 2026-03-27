@@ -35,4 +35,12 @@ public interface ImportFichierRepository extends JpaRepository<ImportFichier, Lo
     void deleteDirectById(@Param("id") Long id);
 
     long countByStatut(StatutImport statut);
+
+    @Query("""
+        SELECT f FROM ImportFichier f
+        WHERE f.statut = 'SUCCES'
+        AND (f.annee > :annee OR (f.annee = :annee AND f.mois >= :mois))
+        ORDER BY f.annee ASC, f.mois ASC
+        """)
+    List<ImportFichier> findSuccessFromPeriode(@Param("annee") int annee, @Param("mois") int mois);
 }

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Import Sinistres - Gestion des Impayés</title></head>
+<body>
+<section>
+
+  <div class="row g-4">
+
+    <!-- Formulaire d'import -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold">
+            <i class="fas fa-file-medical me-2 text-danger"></i>Importer un fichier sinistres
+          </h6>
+        </div>
+        <div class="card-body">
+
+          <div class="alert alert-info py-2 mb-3" style="font-size:12px">
+            <i class="fas fa-info-circle me-1"></i>
+            Format attendu : fichier Excel avec les colonnes
+            <strong>CLIENT</strong> et <strong>DATE_SINISTRE</strong>.
+          </div>
+
+          <form id="importForm" th:action="@{/sinistre/import/upload}" method="post" enctype="multipart/form-data">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px">FICHIER EXCEL</label>
+              <input type="file" class="form-control" id="fichierInput" name="fichier"
+                     accept=".xlsx,.xls" required>
+              <div class="form-text">Formats acceptés : .xlsx, .xls</div>
+            </div>
+
+            <button id="submitBtn" type="submit" class="btn btn-danger w-100">
+              <i class="fas fa-upload me-1"></i>Lancer l'import
+            </button>
+          </form>
+
+          <!-- Barre de progression -->
+          <div id="progressBox" class="d-none mt-3">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <small id="progressLabel" class="fw-semibold text-muted">Envoi du fichier…</small>
+              <small id="progressPct" class="text-muted">0%</small>
+            </div>
+            <div class="progress" style="height:18px;border-radius:9px">
+              <div id="progressBar"
+                   class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
+                   role="progressbar"
+                   style="width:0%;transition:width .3s ease;border-radius:9px;font-size:11px">
+              </div>
+            </div>
+            <div id="progressStep" class="mt-2 text-center text-muted" style="font-size:12px">
+              <i class="fas fa-cloud-upload-alt me-1"></i>Envoi en cours…
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info format -->
+      <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-table me-2 text-secondary"></i>Format du fichier</h6>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0" style="font-size:12px">
+            <thead class="table-light">
+              <tr><th>Colonne</th><th>Format</th><th>Obligatoire</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>CLIENT</code></td>
+                <td>Numéro client</td>
+                <td><span class="badge bg-danger">Oui</span></td>
+              </tr>
+              <tr>
+                <td><code>DATE_SINISTRE</code></td>
+                <td>dd/MM/yyyy</td>
+                <td><span class="badge bg-danger">Oui</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historique des imports -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold">
+            <i class="fas fa-history me-2 text-secondary"></i>Historique des imports sinistres
+            <span class="badge bg-secondary ms-1" th:text="${imports.size()}"></span>
+          </h6>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Fichier</th>
+                <th>Sinistres</th>
+                <th>Non trouvés</th>
+                <th>Erreurs</th>
+                <th>Statut</th>
+                <th>Date import</th>
+                <th>Par</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr th:each="imp : ${imports}">
+                <td class="text-truncate" style="max-width:200px" th:text="${imp.nomFichier}"></td>
+                <td>
+                  <span class="badge bg-danger" th:if="${imp.nbSinistres > 0}" th:text="${imp.nbSinistres}"></span>
+                  <span class="text-muted" th:if="${imp.nbSinistres == 0}">0</span>
+                </td>
+                <td>
+                  <span class="badge bg-warning text-dark" th:if="${imp.nbNonTrouves > 0}" th:text="${imp.nbNonTrouves}"></span>
+                  <span class="text-muted" th:if="${imp.nbNonTrouves == 0}">-</span>
+                </td>
+                <td>
+                  <span class="badge bg-secondary" th:if="${imp.nbErreurs > 0}" th:text="${imp.nbErreurs}"></span>
+                  <span class="text-muted" th:if="${imp.nbErreurs == 0}">-</span>
+                </td>
+                <td>
+                  <span class="badge"
+                        th:classappend="${imp.statut.name() == 'SUCCES'} ? 'bg-success' :
+                                        (${imp.statut.name() == 'ECHEC'}  ? 'bg-danger'  : 'bg-secondary')"
+                        th:text="${imp.statut}"></span>
+                </td>
+                <td style="font-size:12px"
+                    th:text="${imp.dateImport != null ? #temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm') : '-'}"></td>
+                <td style="font-size:12px" th:text="${imp.importePar ?: '-'}"></td>
+              </tr>
+              <tr th:if="${imports.empty}">
+                <td colspan="7" class="text-center text-muted py-4">
+                  <i class="fas fa-inbox fa-2x mb-2 d-block"></i>Aucun import sinistre — utilisez le formulaire ci-contre
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script th:inline="javascript">
+  /*<![CDATA[*/
+  const form        = document.getElementById('importForm');
+  const submitBtn   = document.getElementById('submitBtn');
+  const progressBox = document.getElementById('progressBox');
+  const progressBar = document.getElementById('progressBar');
+  const progressPct = document.getElementById('progressPct');
+  const progressLbl = document.getElementById('progressLabel');
+  const progressStp = document.getElementById('progressStep');
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    progressBox.classList.remove('d-none');
+    submitBtn.disabled = true;
+    progressBar.style.width = '0%';
+    progressPct.textContent = '0%';
+    progressLbl.textContent = 'Envoi du fichier…';
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', function(e) {
+      if (!e.lengthComputable) return;
+      const pct = Math.min(Math.round(e.loaded / e.total * 100), 100);
+      progressBar.style.width = pct + '%';
+      progressPct.textContent = pct + '%';
+    });
+
+    xhr.upload.addEventListener('load', function() {
+      progressBar.style.width = '100%';
+      progressPct.textContent = '100%';
+      progressLbl.textContent = 'Fichier reçu — traitement en cours…';
+      progressStp.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i>Traitement des sinistres…';
+    });
+
+    xhr.addEventListener('load', function() {
+      if (xhr.status >= 400) {
+        progressBar.className = 'progress-bar bg-danger';
+        progressLbl.textContent = 'Erreur lors de l\'import.';
+        submitBtn.disabled = false;
+        return;
+      }
+      demarrerPolling();
+    });
+
+    xhr.addEventListener('error', function() {
+      progressLbl.textContent = 'Erreur réseau.';
+      submitBtn.disabled = false;
+    });
+
+    xhr.open('POST', form.action);
+    xhr.send(new FormData(form));
+  });
+
+  function demarrerPolling() {
+    let tentatives = 0;
+    const maxTentatives = 60; // 5 min max
+    const interval = setInterval(function() {
+      tentatives++;
+      if (tentatives >= maxTentatives) {
+        clearInterval(interval);
+        progressStp.innerHTML = '<i class="fas fa-exclamation-triangle text-warning me-1"></i>Délai dépassé — vérifiez le statut.';
+        submitBtn.disabled = false;
+        return;
+      }
+      fetch('/sinistre/import/en-cours')
+        .then(r => r.json())
+        .then(data => {
+          if (data.count === 0) {
+            clearInterval(interval);
+            progressBar.className = 'progress-bar bg-success';
+            progressLbl.textContent = 'Import terminé !';
+            progressStp.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i>Rechargement…';
+            setTimeout(function() { location.href = '/sinistre/import?done=1'; }, 1500);
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+  }
+
+  // Auto-refresh si import EN_COURS au chargement
+  const hasEnCours = /*[[${imports.?[statut.name() == 'EN_COURS'].size() > 0}]]*/ false;
+  if (hasEnCours) { demarrerPolling(); }
+  /*]]>*/
+  </script>
+
+</section>
+</body>
+</html>
