@@ -171,7 +171,10 @@ public class ExcelParserService {
         public void endRow(int rowNum) {
             if (!headerFound) {
                 if (currentRowHasClientCol || (allowNomFallback && currentRowHasNomCol)) {
-                    // Cette ligne est la vraie ligne d'en-tête
+                    // Normaliser COMPTE → CLIENT si CLIENT absent (certains fichiers utilisent COMPTE comme identifiant)
+                    if (!pendingHeaders.contains("CLIENT") && pendingHeaders.contains("COMPTE")) {
+                        pendingHeaders.set(pendingHeaders.indexOf("COMPTE"), "CLIENT");
+                    }
                     headers.addAll(pendingHeaders);
                     headerFound = true;
                 }
@@ -196,7 +199,7 @@ public class ExcelParserService {
                 while (pendingHeaders.size() <= col) pendingHeaders.add("COL_" + pendingHeaders.size());
                 String colName = formattedValue != null ? formattedValue.trim().toUpperCase() : "COL_" + col;
                 pendingHeaders.set(col, colName);
-                if ("CLIENT".equals(colName)) currentRowHasClientCol = true;
+                if ("CLIENT".equals(colName) || "COMPTE".equals(colName)) currentRowHasClientCol = true;
                 if ("NOM".equals(colName)) currentRowHasNomCol = true;
             } else if (currentRow != null && col < headers.size()) {
                 if (formattedValue != null && !formattedValue.isBlank()) {
@@ -230,7 +233,11 @@ public class ExcelParserService {
                     String header = getCellStringValue(cell);
                     candidats.add(header != null ? header.trim().toUpperCase() : "COL_" + cell.getColumnIndex());
                 }
-                if (candidats.contains("CLIENT") || (allowNomFallback && candidats.contains("NOM"))) {
+                if (candidats.contains("CLIENT") || candidats.contains("COMPTE") || (allowNomFallback && candidats.contains("NOM"))) {
+                    // Normaliser COMPTE → CLIENT si CLIENT absent
+                    if (!candidats.contains("CLIENT") && candidats.contains("COMPTE")) {
+                        candidats.set(candidats.indexOf("COMPTE"), "CLIENT");
+                    }
                     headers.addAll(candidats);
                     headerFound = true;
                 }
@@ -260,7 +267,7 @@ public class ExcelParserService {
 
     public Client rowToClient(Map<String, Object> row) {
         return Client.builder()
-            .numeroClient(getString(row, "CLIENT"))
+            .numeroClient(getNumeroClient(row))
             .nom(getString(row, "NOM"))
             .compte(getString(row, "COMPTE"))
             .zoneLib(getString(row, "ZONELIB"))
@@ -317,6 +324,22 @@ public class ExcelParserService {
         if (val == null) return null;
         String s = val.toString().trim();
         return s.isEmpty() ? null : s;
+    }
+
+    /**
+     * Retourne le numéro client depuis la colonne CLIENT ou COMPTE.
+     * Certains fichiers utilisent COMPTE (numéro de compte bancaire) comme identifiant.
+     * Format compte : 0 + numeroClient + clé(4 chiffres) → on extrait la partie centrale.
+     * Ex : "02117730005" → "211773"
+     */
+    public String getNumeroClient(Map<String, Object> row) {
+        String num = getString(row, "CLIENT");
+        if (num == null) num = getString(row, "COMPTE");
+        if (num != null && num.length() > 7) {
+            // Numéro de compte bancaire : enlever 1er chiffre + 4 derniers
+            num = num.substring(1, num.length() - 4).trim();
+        }
+        return num == null || num.isBlank() ? null : num;
     }
 
     private LocalDate getDate(Map<String, Object> row, String key) {

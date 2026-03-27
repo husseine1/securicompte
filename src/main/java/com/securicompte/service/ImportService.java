@@ -195,7 +195,7 @@ public class ImportService {
         Map<String, Map<String, Object>> premiereLignePar = new LinkedHashMap<>();
         for (List<Map<String, Object>> feuille : List.of(nouvelles, anciennes, stock)) {
             for (Map<String, Object> row : feuille) {
-                String num = excelParserService.getString(row, "CLIENT");
+                String num = excelParserService.getNumeroClient(row);
                 if (num != null) premiereLignePar.putIfAbsent(num, row);
             }
         }
@@ -264,7 +264,7 @@ public class ImportService {
                                               Map<String, Client> clientCache) {
         // Charger uniquement les clés des clients présents dans ce fichier (pas tout l'historique)
         List<Long> candidateIds = rows.stream()
-            .map(r -> excelParserService.getString(r, "CLIENT"))
+            .map(r -> excelParserService.getNumeroClient(r))
             .filter(Objects::nonNull)
             .map(clientCache::get)
             .filter(Objects::nonNull)
@@ -283,7 +283,7 @@ public class ImportService {
         int erreurs = 0;
         for (Map<String, Object> row : rows) {
             try {
-                String num = excelParserService.getString(row, "CLIENT");
+                String num = excelParserService.getNumeroClient(row);
                 if (num == null) continue;
                 Client client = clientCache.get(num);
                 if (client == null) continue;
@@ -317,9 +317,8 @@ public class ImportService {
         int erreurs = 0;
         for (Map<String, Object> row : rows) {
             try {
-                String num = excelParserService.getString(row, "CLIENT");
+                String num = excelParserService.getNumeroClient(row);
                 if (num == null) {
-                    log.warn("Ligne stock ignorée : colonne CLIENT absente. Vérifiez que le fichier contient bien la colonne CLIENT.");
                     erreurs++;
                     continue;
                 }
