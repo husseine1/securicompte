@@ -96,6 +96,9 @@ public class ImportService {
             // Parser le fichier (hors transaction — lecture seule)
             ExcelParserService.ExcelData excelData = excelParserService.parseExcel(file);
 
+            // Collecte des détails d'erreurs pour affichage dans l'historique
+            final List<String> errorDetails = new ArrayList<>();
+
             // Tx2 : supprimer l'ancien stock + importer toutes les données (atomique)
             int[] counts = tx.execute(status -> {
                 ImportFichier importFichier = importFichierRepository.findById(importId).orElseThrow();
@@ -105,11 +108,11 @@ public class ImportService {
                 Map<String, Client> cache = construireClientCache(
                     excelData.nouvelles(), excelData.anciennes(), excelData.stock());
                 int[] resNn = importerSouscriptionsBulk(
-                    excelData.nouvelles(), TypeSouscription.NOUVELLE, importFichier, cache);
+                    excelData.nouvelles(), TypeSouscription.NOUVELLE, importFichier, cache, errorDetails);
                 int[] resNa = importerSouscriptionsBulk(
-                    excelData.anciennes(), TypeSouscription.ANCIENNE, importFichier, cache);
+                    excelData.anciennes(), TypeSouscription.ANCIENNE, importFichier, cache, errorDetails);
                 int[] resNs = importerStockBulk(
-                    excelData.stock(), annee, mois, importFichier, cache);
+                    excelData.stock(), annee, mois, importFichier, cache, errorDetails);
                 int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
                 int nbErreurs = resNn[1] + resNa[1] + resNs[1];
                 return new int[]{resNn[0], resNa[0], resNs[0], ni, nbErreurs};
@@ -125,6 +128,9 @@ public class ImportService {
                 f.setNbStock(c[2]);
                 f.setNbErreurs(c[4]);
                 f.setDateFinImport(LocalDateTime.now());
+                if (!errorDetails.isEmpty()) {
+                    f.setMessageErreur(String.join("\n", errorDetails));
+                }
                 return importFichierRepository.save(f);
             });
 
@@ -261,7 +267,8 @@ public class ImportService {
     private int[] importerSouscriptionsBulk(List<Map<String, Object>> rows,
                                               TypeSouscription type,
                                               ImportFichier importFichier,
-                                              Map<String, Client> clientCache) {
+                                              Map<String, Client> clientCache,
+                                              List<String> errorDetails) {
         // Charger uniquement les clés des clients présents dans ce fichier (pas tout l'historique)
         List<Long> candidateIds = rows.stream()
             .map(r -> excelParserService.getNumeroClient(r))
@@ -296,6 +303,9 @@ public class ImportService {
                 }
             } catch (Exception e) {
                 erreurs++;
+                String rawNum = excelParserService.getNumeroClient(row);
+                String msg = "Souscription – " + type + " – client=" + rawNum + " : " + e.getMessage();
+                errorDetails.add(msg);
                 log.warn("Erreur import souscription ligne: {}", e.getMessage());
             }
         }
@@ -311,7 +321,8 @@ public class ImportService {
      */
     private int[] importerStockBulk(List<Map<String, Object>> rows, int annee, int mois,
                                      ImportFichier importFichier,
-                                     Map<String, Client> clientCache) {
+                                     Map<String, Client> clientCache,
+                                     List<String> errorDetails) {
         Set<Long> seen = new HashSet<>();
         List<StockMensuel> toSave = new ArrayList<>();
         int erreurs = 0;
@@ -319,11 +330,18 @@ public class ImportService {
             try {
                 String num = excelParserService.getNumeroClient(row);
                 if (num == null) {
+                    String rawVal = excelParserService.getString(row, "COMPTE");
+                    if (rawVal == null) rawVal = excelParserService.getString(row, "CLIENT");
+                    String msg = "Stock – numéro illisible, valeur brute : " + rawVal;
+                    errorDetails.add(msg);
+                    log.warn("Stock – impossible d'extraire le numéro client, valeur brute : {}", rawVal);
                     erreurs++;
                     continue;
                 }
                 Client client = clientCache.get(num);
                 if (client == null) {
+                    String msg = "Stock – client introuvable pour le numéro extrait : " + num;
+                    errorDetails.add(msg);
                     log.warn("Client introuvable pour le numéro: {}", num);
                     erreurs++;
                     continue;
@@ -334,6 +352,8 @@ public class ImportService {
                 }
             } catch (Exception e) {
                 erreurs++;
+                String rawNum = excelParserService.getNumeroClient(row);
+                errorDetails.add("Stock – client=" + rawNum + " : " + e.getMessage());
                 log.warn("Erreur import stock ligne: {}", e.getMessage());
             }
         }
