@@ -161,7 +161,16 @@ public class ClientService {
         LocalDate maintenant = LocalDate.now();
         List<HistoriquePaiementDto> historique = new ArrayList<>();
 
-        LocalDate curseur = premiereSouscription.withDayOfMonth(1);
+        // Ne pas afficher les mois antérieurs au premier import du système
+        LocalDate debutHisto = premiereSouscription.withDayOfMonth(1);
+        Optional<LocalDate> premierImport = moisImportes.stream()
+            .map(cle -> { String[] p = cle.split("_"); return LocalDate.of(Integer.parseInt(p[0]), Integer.parseInt(p[1]), 1); })
+            .min(LocalDate::compareTo);
+        if (premierImport.isPresent() && premierImport.get().isAfter(debutHisto)) {
+            debutHisto = premierImport.get();
+        }
+
+        LocalDate curseur = debutHisto;
         while (!curseur.isAfter(maintenant)) {
             int annee = curseur.getYear();
             int mois = curseur.getMonthValue();

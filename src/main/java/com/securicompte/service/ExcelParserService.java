@@ -53,12 +53,15 @@ public class ExcelParserService {
             Sheet sheetAncienne = findSheet(workbook, SHEETS_ANCIENNE);
             Sheet sheetStock    = findSheet(workbook, SHEETS_STOCK);
 
+            List<String> sheetsFound = new ArrayList<>();
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) sheetsFound.add(workbook.getSheetName(i));
+
             if (sheetNouvelle == null)
-                throw new IllegalArgumentException("Feuille 'Nouvelle souscription' introuvable dans le fichier.");
+                throw new IllegalArgumentException("Feuille 'Nouvelle souscription' introuvable. Feuilles présentes : " + sheetsFound);
             if (sheetAncienne == null)
-                throw new IllegalArgumentException("Feuille 'Ancienne souscription' introuvable dans le fichier.");
+                throw new IllegalArgumentException("Feuille 'Ancienne souscription' introuvable. Feuilles présentes : " + sheetsFound);
             if (sheetStock == null)
-                throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable dans le fichier.");
+                throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable. Feuilles présentes : " + sheetsFound);
 
             List<Map<String, Object>> nouvelles = parseSheet(sheetNouvelle, false);
             List<Map<String, Object>> anciennes = parseSheet(sheetAncienne, false);
@@ -372,10 +375,18 @@ public class ExcelParserService {
         };
     }
 
-    private Sheet findSheet(Workbook wb, List<String> names) {
+    private Sheet findSheet(Workbook wb, List<String> keywords) {
+        // 1. Correspondance exacte
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             String sheetName = wb.getSheetName(i).toLowerCase().trim();
-            if (names.contains(sheetName)) return wb.getSheetAt(i);
+            if (keywords.contains(sheetName)) return wb.getSheetAt(i);
+        }
+        // 2. Correspondance partielle (le nom contient un mot-clé)
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            String sheetName = wb.getSheetName(i).toLowerCase().trim();
+            for (String kw : keywords) {
+                if (sheetName.contains(kw)) return wb.getSheetAt(i);
+            }
         }
         return null;
     }

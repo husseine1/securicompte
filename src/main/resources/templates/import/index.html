@@ -281,7 +281,7 @@
           if (data.count === 0) {
             clearInterval(interval);
             setProgressTermine();
-            setTimeout(function() { location.reload(); }, 1500);
+            setTimeout(function() { location.href = '/import?done=1'; }, 1500);
           }
         })
         .catch(() => { /* réseau temporairement indisponible, on réessaie */ });

@@ -28,10 +28,16 @@ public class ImportController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
-    public String pageImport(Model model) {
+    public String pageImport(Model model,
+                             @RequestParam(required = false) Boolean done,
+                             @RequestParam(required = false) Boolean supprime) {
         model.addAttribute("imports", importService.getTousLesImports());
         model.addAttribute("anneeCourante", LocalDate.now().getYear());
         model.addAttribute("moisCourant", LocalDate.now().getMonthValue());
+        if (Boolean.TRUE.equals(done))
+            model.addAttribute("succes", "Import terminé avec succès !");
+        if (Boolean.TRUE.equals(supprime))
+            model.addAttribute("succes", "Suppression terminée avec succès !");
         return "import/index";
     }
 
