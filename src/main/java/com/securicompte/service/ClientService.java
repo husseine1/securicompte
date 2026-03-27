@@ -140,6 +140,7 @@ public class ClientService {
         LocalDate premiereSouscription = souscriptions.stream()
             .map(Souscription::getDatSouscription)
             .filter(Objects::nonNull)
+            .filter(d -> d.getYear() >= 2000)  // filtre les dates mal parsées (ex: année 18 ou 25)
             .min(LocalDate::compareTo)
             .orElse(null);
 

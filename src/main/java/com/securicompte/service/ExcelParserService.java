@@ -348,10 +348,11 @@ public class ExcelParserService {
         if (val instanceof String s && !s.isBlank()) {
             try {
                 String[] parts = s.trim().split("/");
-                if (parts.length == 3)
-                    return LocalDate.of(Integer.parseInt(parts[2]),
-                                        Integer.parseInt(parts[1]),
-                                        Integer.parseInt(parts[0]));
+                if (parts.length == 3) {
+                    int year = Integer.parseInt(parts[2]);
+                    if (year < 100) year += 2000; // 25 → 2025, 18 → 2018
+                    return LocalDate.of(year, Integer.parseInt(parts[1]), Integer.parseInt(parts[0]));
+                }
                 return LocalDate.parse(s.trim());
             } catch (Exception ignored) {}
         }
