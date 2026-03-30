@@ -44,8 +44,10 @@ public class SinistreImportService {
     public void importerFichier(byte[] fileBytes, String filename, String username) {
         SinistreImport si = creerEnCours(filename, username);
         try {
-            int[] result = traiterFichier(fileBytes, si.getId());
-            finaliserSucces(si.getId(), result[0], result[1], result[2]);
+            List<String> erreurDetails = new ArrayList<>();
+            int[] result = traiterFichier(fileBytes, si.getId(), erreurDetails);
+            String messageErreur = erreurDetails.isEmpty() ? null : String.join("\n", erreurDetails);
+            finaliserSucces(si.getId(), result[0], result[1], result[2], messageErreur);
         } catch (Exception e) {
             log.error("Erreur import sinistres '{}': {}", filename, e.getMessage(), e);
             finaliserEchec(si.getId(), e.getMessage());
@@ -63,7 +65,7 @@ public class SinistreImportService {
     }
 
     @Transactional
-    public int[] traiterFichier(byte[] fileBytes, Long importId) throws Exception {
+    public int[] traiterFichier(byte[] fileBytes, Long importId, List<String> erreurDetails) throws Exception {
         List<Map<String, String>> rows = parseExcel(fileBytes);
         log.info("Import sinistres — {} lignes lues", rows.size());
 
@@ -77,14 +79,18 @@ public class SinistreImportService {
                 Optional<Client> opt = clientRepository.findByNumeroClient(numeroClient.trim());
                 if (opt.isEmpty()) {
                     nbNonTrouves++;
+                    erreurDetails.add("Client introuvable: " + numeroClient);
                     log.debug("Client introuvable: {}", numeroClient);
                     continue;
                 }
 
-                LocalDate dateSinistre = parseDate(row.get("DATE_SINISTRE"));
+                String rawDate = row.get("DATE_SINISTRE");
+                LocalDate dateSinistre = parseDate(rawDate);
                 if (dateSinistre == null) {
                     nbErreurs++;
-                    log.warn("Date sinistre invalide pour client {}: {}", numeroClient, row.get("DATE_SINISTRE"));
+                    erreurDetails.add("Date invalide pour client " + numeroClient
+                        + ": \"" + (rawDate != null ? rawDate : "(vide)") + "\"");
+                    log.warn("Date sinistre invalide pour client {}: {}", numeroClient, rawDate);
                     continue;
                 }
 
@@ -99,6 +105,8 @@ public class SinistreImportService {
                 nbSinistres++;
             } catch (Exception e) {
                 nbErreurs++;
+                String numCli = row.getOrDefault("CLIENT", "?");
+                erreurDetails.add("Erreur pour client " + numCli + ": " + e.getMessage());
                 log.warn("Erreur traitement ligne sinistre: {}", e.getMessage());
             }
         }
@@ -109,12 +117,13 @@ public class SinistreImportService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void finaliserSucces(Long id, int nbSinistres, int nbNonTrouves, int nbErreurs) {
+    public void finaliserSucces(Long id, int nbSinistres, int nbNonTrouves, int nbErreurs, String messageErreur) {
         SinistreImport si = sinistreImportRepository.findById(id).orElseThrow();
         si.setStatut(StatutImport.SUCCES);
         si.setNbSinistres(nbSinistres);
         si.setNbNonTrouves(nbNonTrouves);
         si.setNbErreurs(nbErreurs);
+        si.setMessageErreur(messageErreur);
         si.setDateFinImport(LocalDateTime.now());
         sinistreImportRepository.save(si);
     }
@@ -185,6 +194,21 @@ public class SinistreImportService {
     // ─────────────────────────────────────────────────────────────
     //  Queries
     // ─────────────────────────────────────────────────────────────
+
+    public SinistreImport getById(Long id) {
+        return sinistreImportRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Import sinistre introuvable : " + id));
+    }
+
+    @Transactional
+    public void supprimerImport(Long id) {
+        SinistreImport imp = getById(id);
+        if (imp.getStatut() == StatutImport.EN_COURS) {
+            throw new IllegalStateException("Impossible de supprimer un import en cours.");
+        }
+        sinistreImportRepository.deleteById(id);
+        log.info("Import sinistre {} supprimé ({})", id, imp.getNomFichier());
+    }
 
     public List<SinistreImport> getTousLesImports() {
         return sinistreImportRepository.findAllByOrderByDateImportDesc();
@@ -273,6 +297,13 @@ public class SinistreImportService {
             try { return LocalDate.parse(s.trim(), fmt); }
             catch (DateTimeParseException ignored) {}
         }
+        // Numéro de série Excel (ex: 44806 → 02/09/2022)
+        try {
+            double serial = Double.parseDouble(s.trim());
+            if (serial > 0) {
+                return DateUtil.getLocalDateTime(serial).toLocalDate();
+            }
+        } catch (NumberFormatException ignored) {}
         return null;
     }
 }

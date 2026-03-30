@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Détail import sinistres - Gestion des Impayés</title></head>
+<body>
+<section>
+
+  <div class="mb-3">
+    <a th:href="@{/sinistre/import}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Retour à la liste
+    </a>
+  </div>
+
+  <!-- Alertes -->
+  <div th:if="${succes}" class="alert alert-success alert-dismissible fade show mb-3">
+    <i class="fas fa-check-circle me-1"></i><span th:text="${succes}"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  <div th:if="${erreur}" class="alert alert-danger alert-dismissible fade show mb-3">
+    <i class="fas fa-exclamation-circle me-1"></i><span th:text="${erreur}"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center">
+      <h6 class="mb-0 fw-bold">
+        <i class="fas fa-file-medical me-2 text-danger"></i>Détail de l'import sinistres
+      </h6>
+      <!-- Bouton supprimer (admin uniquement) -->
+      <form th:action="@{/sinistre/import/{id}/supprimer(id=${imp.id})}"
+            method="post"
+            sec:authorize="hasRole('ADMIN')"
+            onsubmit="return confirm('Supprimer cet enregistrement d\'import ? Les sinistres déjà appliqués aux clients NE seront PAS annulés automatiquement.');">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+        <button type="submit"
+                class="btn btn-sm btn-outline-danger"
+                th:disabled="${imp.statut.name() == 'EN_COURS'}">
+          <i class="fas fa-trash me-1"></i>Supprimer
+        </button>
+      </form>
+    </div>
+    <div class="card-body">
+
+      <div class="row g-3">
+
+        <!-- Infos générales -->
+        <div class="col-md-8">
+          <label class="text-muted" style="font-size:11px;text-transform:uppercase">Fichier</label>
+          <div class="fw-semibold" th:text="${imp.nomFichier}"></div>
+        </div>
+        <div class="col-md-4">
+          <label class="text-muted" style="font-size:11px;text-transform:uppercase">Statut</label>
+          <div>
+            <span class="badge fs-6"
+                  th:classappend="${imp.statut.name() == 'SUCCES'} ? 'bg-success' :
+                                   (${imp.statut.name() == 'ECHEC'}  ? 'bg-danger'  : 'bg-warning text-dark')"
+                  th:text="${imp.statut}"></span>
+          </div>
+        </div>
+
+        <!-- Compteurs -->
+        <div class="col-md-4">
+          <div class="card border-0 bg-danger bg-opacity-10 text-center p-3 rounded">
+            <div class="fs-3 fw-bold text-danger" th:text="${imp.nbSinistres ?: 0}"></div>
+            <div class="text-muted" style="font-size:12px">Sinistres enregistrés</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card border-0 bg-warning bg-opacity-10 text-center p-3 rounded">
+            <div class="fs-3 fw-bold text-warning" th:text="${imp.nbNonTrouves ?: 0}"></div>
+            <div class="text-muted" style="font-size:12px">Clients non trouvés</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card border-0 bg-secondary bg-opacity-10 text-center p-3 rounded">
+            <div class="fs-3 fw-bold text-secondary" th:text="${imp.nbErreurs ?: 0}"></div>
+            <div class="text-muted" style="font-size:12px">Lignes en erreur</div>
+          </div>
+        </div>
+
+        <!-- Dates et utilisateur -->
+        <div class="col-md-4">
+          <label class="text-muted" style="font-size:11px;text-transform:uppercase">Date d'import</label>
+          <div th:text="${imp.dateImport != null ? #temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm:ss') : '-'}"></div>
+        </div>
+        <div class="col-md-4">
+          <label class="text-muted" style="font-size:11px;text-transform:uppercase">Date de fin</label>
+          <div th:text="${imp.dateFinImport != null ? #temporals.format(imp.dateFinImport,'dd/MM/yyyy HH:mm:ss') : '-'}"></div>
+        </div>
+        <div class="col-md-4">
+          <label class="text-muted" style="font-size:11px;text-transform:uppercase">Importé par</label>
+          <div th:text="${imp.importePar ?: '-'}"></div>
+        </div>
+
+        <!-- Détail des anomalies / message d'erreur -->
+        <div class="col-12" th:if="${imp.messageErreur != null}">
+          <div th:class="${imp.statut.name() == 'SUCCES'} ? 'alert alert-warning mb-0' : 'alert alert-danger mb-0'">
+            <strong>
+              <i th:class="${imp.statut.name() == 'SUCCES'} ? 'fas fa-exclamation-triangle me-1' : 'fas fa-exclamation-circle me-1'"></i>
+              <span th:text="${imp.statut.name() == 'SUCCES'} ? 'Détail des anomalies :' : 'Message d\'erreur :'"></span>
+            </strong>
+            <pre class="mt-2 mb-0" style="font-size:12px;white-space:pre-wrap" th:text="${imp.messageErreur}"></pre>
+          </div>
+        </div>
+
+        <!-- Info suppression -->
+        <div class="col-12" sec:authorize="hasRole('ADMIN')"
+             th:if="${imp.statut.name() == 'SUCCES'}">
+          <div class="alert alert-warning mb-0" style="font-size:12px">
+            <i class="fas fa-info-circle me-1"></i>
+            <strong>Note :</strong> Supprimer cet enregistrement efface uniquement la trace d'import.
+            Les sinistres déjà appliqués aux clients restent actifs. Pour annuler un sinistre sur un client spécifique,
+            utilisez le bouton <em>Annuler sinistre</em> sur sa fiche client.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</section>
+</body>
+</html>

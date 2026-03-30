@@ -106,11 +106,12 @@
                 <th>Statut</th>
                 <th>Date import</th>
                 <th>Par</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               <tr th:each="imp : ${imports}">
-                <td class="text-truncate" style="max-width:200px" th:text="${imp.nomFichier}"></td>
+                <td class="text-truncate" style="max-width:180px" th:text="${imp.nomFichier}"></td>
                 <td>
                   <span class="badge bg-danger" th:if="${imp.nbSinistres > 0}" th:text="${imp.nbSinistres}"></span>
                   <span class="text-muted" th:if="${imp.nbSinistres == 0}">0</span>
@@ -126,15 +127,35 @@
                 <td>
                   <span class="badge"
                         th:classappend="${imp.statut.name() == 'SUCCES'} ? 'bg-success' :
-                                        (${imp.statut.name() == 'ECHEC'}  ? 'bg-danger'  : 'bg-secondary')"
+                                        (${imp.statut.name() == 'ECHEC'}  ? 'bg-danger'  : 'bg-warning text-dark')"
                         th:text="${imp.statut}"></span>
                 </td>
                 <td style="font-size:12px"
                     th:text="${imp.dateImport != null ? #temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm') : '-'}"></td>
                 <td style="font-size:12px" th:text="${imp.importePar ?: '-'}"></td>
+                <td class="text-end" style="white-space:nowrap">
+                  <!-- Détail -->
+                  <a th:href="@{/sinistre/import/{id}(id=${imp.id})}"
+                     class="btn btn-sm btn-outline-secondary me-1"
+                     title="Voir le détail">
+                    <i class="fas fa-eye"></i>
+                  </a>
+                  <!-- Supprimer (admin uniquement) -->
+                  <form th:action="@{/sinistre/import/{id}/supprimer(id=${imp.id})}"
+                        method="post"
+                        class="d-inline"
+                        sec:authorize="hasRole('ADMIN')"
+                        th:if="${imp.statut.name() != 'EN_COURS'}"
+                        onsubmit="return confirm('Supprimer cet enregistrement ? Les sinistres déjà appliqués NE seront PAS annulés.');">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </form>
+                </td>
               </tr>
               <tr th:if="${imports.empty}">
-                <td colspan="7" class="text-center text-muted py-4">
+                <td colspan="8" class="text-center text-muted py-4">
                   <i class="fas fa-inbox fa-2x mb-2 d-block"></i>Aucun import sinistre — utilisez le formulaire ci-contre
                 </td>
               </tr>

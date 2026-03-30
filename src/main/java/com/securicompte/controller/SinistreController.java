@@ -66,6 +66,26 @@ public class SinistreController {
         return "redirect:/sinistre/import";
     }
 
+    @GetMapping("/import/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    public String detail(@PathVariable Long id, Model model) {
+        model.addAttribute("imp", sinistreImportService.getById(id));
+        return "sinistre/detail";
+    }
+
+    @PostMapping("/import/{id}/supprimer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String supprimer(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+        try {
+            sinistreImportService.supprimerImport(id);
+            redirectAttributes.addFlashAttribute("succes", "Import sinistre supprimé.");
+        } catch (Exception e) {
+            log.error("Erreur suppression import sinistre {}", id, e);
+            redirectAttributes.addFlashAttribute("erreur", "Erreur : " + e.getMessage());
+        }
+        return "redirect:/sinistre/import";
+    }
+
     @PostMapping("/client/{clientId}/annuler")
     @PreAuthorize("hasRole('ADMIN')")
     public String annulerSinistre(@PathVariable Long clientId,

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -98,6 +99,7 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     @Query("DELETE FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
+    @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
         DELETE FROM Impaye i WHERE i.client.id = :clientId
