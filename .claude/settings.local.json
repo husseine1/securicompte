@@ -6,7 +6,15 @@
       "Bash(PGPASSWORD=postgres psql -U postgres -d securicompte_db -c \"SELECT username, password FROM users;\")",
       "Bash(PGPASSWORD=postgres psql -U postgres -d securicompte_db << 'EOF':*)",
       "Bash(cmd //c \"taskkill /PID 186544 /F\")",
-      "Bash(cd \"C:\\\\Users\\\\DELL XPS\\\\Downloads\\\\securicompte\" && mvn compile -q 2>&1 | tail -40)"
+      "Bash(cd \"C:\\\\Users\\\\DELL XPS\\\\Downloads\\\\securicompte\" && mvn compile -q 2>&1 | tail -40)",
+      "Bash(find:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 4124 -Force\" 2>&1 && sleep 2 && netstat -ano | findstr :8080 || echo \"Port libéré\")",
+      "Bash(sleep:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 32 -Force\" 2>&1 && echo \"Arrêté\")",
+      "Bash(cd:*)",
+      "Bash(PGPASSWORD=postgres psql -U postgres -h localhost -d securicompte_db -c \"GRANT CREATE ON SCHEMA public TO securicompte_user;\" 2>&1)",
+      "Bash(PGPASSWORD=postgres psql -U postgres -h localhost -d securicompte_db -c \"DELETE FROM flyway_schema_history WHERE version = '7';\" 2>&1)",
+      "Bash(PGPASSWORD=securicompte_pass psql -U securicompte_user -d securicompte_db -c \"\nSELECT c.numero_client, c.nom,\n       MIN\\(s.dat_souscription\\) as min_sousc,\n       s.type_souscription,\n       MIN\\(sm.annee * 100 + sm.mois\\) as premier_stock\nFROM client c\nJOIN souscription s ON s.client_id = c.id\nLEFT JOIN stock_mensuel sm ON sm.client_id = c.id\nGROUP BY c.id, c.numero_client, c.nom, s.type_souscription\nHAVING MIN\\(sm.annee * 100 + sm.mois\\) > MIN\\(s.dat_souscription :: text ::int\\) + 200\n   AND MIN\\(sm.annee * 100 + sm.mois\\) IS NOT NULL\nORDER BY \\(MIN\\(sm.annee * 100 + sm.mois\\) - \\(MIN\\(s.dat_souscription\\)::text::int\\)\\) DESC\nLIMIT 5;\n\" 2>/dev/null || PGPASSWORD=securicompte_pass psql -U securicompte_user -d securicompte_db -c \"\nSELECT c.numero_client, c.nom,\n       MIN\\(s.dat_souscription\\) as min_sousc,\n       MIN\\(sm.annee * 100 + sm.mois\\) as premier_stock\nFROM client c\nJOIN souscription s ON s.client_id = c.id\nLEFT JOIN stock_mensuel sm ON sm.client_id = c.id\nGROUP BY c.id, c.numero_client, c.nom\nHAVING MIN\\(s.dat_souscription\\) < '2023-01-01' AND MIN\\(sm.annee * 100 + sm.mois\\) > 202400\nLIMIT 5;\n\")"
     ]
   }
 }

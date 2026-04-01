@@ -347,7 +347,8 @@ public class ExcelParserService {
         if (val instanceof LocalDate ld) return ld;
         if (val instanceof String s && !s.isBlank()) {
             try {
-                String[] parts = s.trim().split("/");
+                // Gère les séparateurs / . - (ex: 10/02/2019, 10.02.2019, 10-02-2019)
+                String[] parts = s.trim().split("[/.-]");
                 if (parts.length == 3) {
                     int year = Integer.parseInt(parts[2]);
                     if (year < 100) year += 2000; // 25 → 2025, 18 → 2018
