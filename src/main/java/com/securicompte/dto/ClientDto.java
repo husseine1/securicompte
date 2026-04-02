@@ -13,6 +13,8 @@ public class ClientDto {
     private String zoneLib;
     private String agenceLib;
     private String gestionnaire;
+    private LocalDate dateSinistre;
+    private LocalDate dateCompteFerme;
     private int nbImpayes;
     private BigDecimal montantTotalDu;
 }

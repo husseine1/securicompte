@@ -21,17 +21,34 @@ public class ClientController {
     @PreAuthorize("isAuthenticated()")
     public String rechercheClient(
             @RequestParam(value = "q", required = false, defaultValue = "") String recherche,
+            @RequestParam(value = "agence", required = false, defaultValue = "") String agence,
+            @RequestParam(value = "gestionnaire", required = false, defaultValue = "") String gestionnaire,
+            @RequestParam(value = "sinistre", required = false, defaultValue = "false") boolean sinistre,
+            @RequestParam(value = "compteFerme", required = false, defaultValue = "false") boolean compteFerme,
+            @RequestParam(value = "annee", required = false, defaultValue = "0") int annee,
+            @RequestParam(value = "mois", required = false, defaultValue = "0") int mois,
             @RequestParam(value = "page", defaultValue = "0") int page,
             Model model) {
 
-        if (!recherche.isEmpty()) {
-            var clients = clientService.rechercherClients(recherche, page, 20);
+        boolean hasFilter = !recherche.isEmpty() || !agence.isEmpty() || !gestionnaire.isEmpty()
+                         || sinistre || compteFerme || annee > 0;
+        if (hasFilter) {
+            var clients = clientService.rechercherClients(
+                recherche, agence, gestionnaire, sinistre, compteFerme, annee, mois, page, 20);
             model.addAttribute("clients", clients);
             model.addAttribute("totalPages", clients.getTotalPages());
             model.addAttribute("totalElements", clients.getTotalElements());
         }
         model.addAttribute("recherche", recherche);
+        model.addAttribute("agence", agence);
+        model.addAttribute("gestionnaire", gestionnaire);
+        model.addAttribute("sinistre", sinistre);
+        model.addAttribute("compteFerme", compteFerme);
+        model.addAttribute("annee", annee);
+        model.addAttribute("mois", mois);
         model.addAttribute("page", page);
+        model.addAttribute("agences", clientService.getAgences());
+        model.addAttribute("gestionnaires", clientService.getGestionnaires());
         return "client/recherche";
     }
 

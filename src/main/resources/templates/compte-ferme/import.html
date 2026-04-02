@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Import comptes fermés - Gestion des Impayés</title></head>
+<body>
+<section>
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-0 pt-3">
+      <h6 class="mb-0 fw-bold"><i class="fas fa-folder-minus me-2 text-danger"></i>Import — Comptes Fermés</h6>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-3" style="font-size:13px">
+        Fichier Excel avec les colonnes <code>CLIENT</code> et <code>DATE_FERMETURE</code>.
+      </p>
+      <form th:action="@{/compte-ferme/import/upload}" method="post" enctype="multipart/form-data">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" style="font-size:12px">FICHIER EXCEL</label>
+            <input type="file" class="form-control" name="fichier" accept=".xlsx,.xls" required>
+          </div>
+          <div class="col-md-3">
+            <button type="submit" class="btn btn-danger">
+              <i class="fas fa-upload me-1"></i>Importer
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Historique -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-3">
+      <h6 class="mb-0 fw-bold">Historique des imports</h6>
+      <span th:if="${nbEnCours > 0}" class="badge bg-warning text-dark">
+        <i class="fas fa-spinner fa-spin me-1"></i><span th:text="${nbEnCours}"></span> en cours
+      </span>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>Fichier</th><th>Importé le</th><th>Par</th><th>Fermés</th><th>Non trouvés</th><th>Erreurs</th><th>Statut</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr th:each="imp : ${imports}">
+            <td style="font-size:13px">
+              <a th:href="@{/compte-ferme/import/{id}(id=${imp.id})}"
+                 th:text="${imp.nomFichier}" class="text-decoration-none"></a>
+            </td>
+            <td style="font-size:12px"
+                th:text="${#temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm')}"></td>
+            <td style="font-size:12px" th:text="${imp.importePar ?: '-'}"></td>
+            <td><span class="badge bg-danger" th:text="${imp.nbFermes}"></span></td>
+            <td><span class="badge bg-secondary" th:text="${imp.nbNonTrouves}"></span></td>
+            <td><span class="badge bg-warning text-dark" th:text="${imp.nbErreurs}"></span></td>
+            <td>
+              <span class="badge"
+                    th:classappend="${imp.statut?.name() == 'SUCCES'} ? 'bg-success' :
+                                    (${imp.statut?.name() == 'ECHEC'} ? 'bg-danger' :
+                                    (${imp.statut?.name() == 'EN_COURS'} ? 'bg-warning text-dark' : 'bg-secondary'))"
+                    th:text="${imp.statut}"></span>
+            </td>
+            <td sec:authorize="hasRole('ROLE_ADMIN')">
+              <form th:action="@{/compte-ferme/import/{id}/supprimer(id=${imp.id})}" method="post"
+                    th:if="${imp.statut?.name() != 'EN_COURS'}"
+                    onsubmit="return confirm('Supprimer cet import ?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          <tr th:if="${imports.empty}">
+            <td colspan="8" class="text-center text-muted py-4">
+              <i class="fas fa-inbox fa-2x mb-2 d-block"></i>Aucun import effectué
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+</body>
+</html>

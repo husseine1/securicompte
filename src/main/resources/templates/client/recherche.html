@@ -13,19 +13,78 @@
     <div class="card-body">
       <form th:action="@{/clients/recherche}" method="get">
         <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label fw-semibold" style="font-size:12px">RECHERCHE (numéro ou nom)</label>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" style="font-size:12px">NUMÉRO OU NOM</label>
             <div class="input-group">
               <span class="input-group-text"><i class="fas fa-search"></i></span>
               <input type="text" class="form-control" name="q" th:value="${recherche}"
                      placeholder="Saisir numéro client ou nom...">
             </div>
           </div>
+          <div class="col-md-2">
+            <label class="form-label fw-semibold" style="font-size:12px">AGENCE</label>
+            <select class="form-select" name="agence">
+              <option value="" th:selected="${agence == ''}">Toutes</option>
+              <option th:each="a : ${agences}" th:value="${a}" th:text="${a}"
+                      th:selected="${agence == a}"></option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-semibold" style="font-size:12px">GESTIONNAIRE</label>
+            <select class="form-select" name="gestionnaire">
+              <option value="" th:selected="${gestionnaire == ''}">Tous</option>
+              <option th:each="g : ${gestionnaires}" th:value="${g}" th:text="${g}"
+                      th:selected="${gestionnaire == g}"></option>
+            </select>
+          </div>
+          <div class="col-md-1">
+            <label class="form-label fw-semibold" style="font-size:12px">ANNÉE</label>
+            <input type="number" class="form-control" name="annee"
+                   th:value="${annee > 0 ? annee : ''}"
+                   placeholder="ex: 2025" min="2000" max="2100">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-semibold" style="font-size:12px">MOIS</label>
+            <select class="form-select" name="mois">
+              <option value="0" th:selected="${mois == 0}">Tous</option>
+              <option value="1"  th:selected="${mois == 1}">Janvier</option>
+              <option value="2"  th:selected="${mois == 2}">Février</option>
+              <option value="3"  th:selected="${mois == 3}">Mars</option>
+              <option value="4"  th:selected="${mois == 4}">Avril</option>
+              <option value="5"  th:selected="${mois == 5}">Mai</option>
+              <option value="6"  th:selected="${mois == 6}">Juin</option>
+              <option value="7"  th:selected="${mois == 7}">Juillet</option>
+              <option value="8"  th:selected="${mois == 8}">Août</option>
+              <option value="9"  th:selected="${mois == 9}">Septembre</option>
+              <option value="10" th:selected="${mois == 10}">Octobre</option>
+              <option value="11" th:selected="${mois == 11}">Novembre</option>
+              <option value="12" th:selected="${mois == 12}">Décembre</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-semibold" style="font-size:12px">STATUT CLIENT</label>
+            <div class="d-flex flex-column gap-1">
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="sinistre" value="true"
+                       id="filtreSinistre" th:checked="${sinistre}">
+                <label class="form-check-label" for="filtreSinistre" style="font-size:12px">
+                  <span class="badge bg-warning text-dark"><i class="fas fa-ambulance"></i></span> Sinistrés
+                </label>
+              </div>
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="compteFerme" value="true"
+                       id="filtreCompteFerme" th:checked="${compteFerme}">
+                <label class="form-check-label" for="filtreCompteFerme" style="font-size:12px">
+                  <span class="badge bg-danger"><i class="fas fa-lock"></i></span> Comptes fermés
+                </label>
+              </div>
+            </div>
+          </div>
           <div class="col-md-2 d-flex align-items-end gap-2">
             <button type="submit" class="btn btn-primary flex-grow-1">
               <i class="fas fa-search me-1"></i>Rechercher
             </button>
-            <a th:href="@{/clients/recherche}" class="btn btn-outline-secondary">
+            <a th:href="@{/clients/recherche}" class="btn btn-outline-secondary" title="Réinitialiser">
               <i class="fas fa-times"></i>
             </a>
           </div>
@@ -45,7 +104,7 @@
     <div class="card-body p-0">
       <table class="table table-hover mb-0">
         <thead>
-          <tr><th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th><th>Zone</th><th>Actions</th></tr>
+          <tr><th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th><th>Zone</th><th>Statut</th><th>Actions</th></tr>
         </thead>
         <tbody>
           <tr th:each="c : ${clients}">
@@ -58,15 +117,29 @@
             <td><small class="text-muted" th:text="${c.gestionnaire ?: '-'}"></small></td>
             <td><small class="text-muted" th:text="${c.zoneLib ?: '-'}"></small></td>
             <td>
+              <span th:if="${c.dateCompteFerme != null}"
+                    class="badge bg-danger" style="font-size:10px">
+                <i class="fas fa-lock me-1"></i>Compte fermé
+              </span>
+              <span th:if="${c.dateSinistre != null and c.dateCompteFerme == null}"
+                    class="badge bg-warning text-dark" style="font-size:10px">
+                <i class="fas fa-ambulance me-1"></i>Sinistré
+              </span>
+              <span th:if="${c.dateSinistre == null and c.dateCompteFerme == null}"
+                    class="badge bg-success" style="font-size:10px">
+                <i class="fas fa-check me-1"></i>Actif
+              </span>
+            </td>
+            <td>
               <a th:href="@{/clients/{id}(id=${c.id})}" class="btn btn-sm btn-outline-primary py-0 px-2">
                 <i class="fas fa-eye me-1"></i>Voir profil
               </a>
             </td>
           </tr>
           <tr th:if="${clients.empty}">
-            <td colspan="6" class="text-center text-muted py-4">
+            <td colspan="7" class="text-center text-muted py-4">
               <i class="fas fa-user-slash fa-2x mb-2 d-block"></i>
-              Aucun client trouvé pour "<span th:text="${recherche}"></span>"
+              Aucun client trouvé
             </td>
           </tr>
         </tbody>
@@ -82,22 +155,24 @@
       <nav>
         <ul class="pagination pagination-sm mb-0">
           <li class="page-item" th:classappend="${page == 0} ? 'disabled'">
-            <a class="page-link" th:href="@{/clients/recherche(q=${recherche},page=${page - 1})}">&laquo;</a>
+            <a class="page-link"
+               th:href="@{/clients/recherche(q=${recherche},agence=${agence},gestionnaire=${gestionnaire},sinistre=${sinistre},compteFerme=${compteFerme},annee=${annee},mois=${mois},page=${page - 1})}">&laquo;</a>
           </li>
           <li class="page-item" th:classappend="${page + 1 >= totalPages} ? 'disabled'">
-            <a class="page-link" th:href="@{/clients/recherche(q=${recherche},page=${page + 1})}">&raquo;</a>
+            <a class="page-link"
+               th:href="@{/clients/recherche(q=${recherche},agence=${agence},gestionnaire=${gestionnaire},sinistre=${sinistre},compteFerme=${compteFerme},annee=${annee},mois=${mois},page=${page + 1})}">&raquo;</a>
           </li>
         </ul>
       </nav>
     </div>
   </div>
 
-  <!-- Placeholder si pas de recherche -->
+  <!-- Placeholder -->
   <div th:if="${clients == null}" class="card border-0 shadow-sm">
     <div class="card-body text-center py-5 text-muted">
       <i class="fas fa-search fa-3x mb-3 d-block" style="color:#dee2e6"></i>
-      <h6>Saisir un numéro client ou un nom pour lancer la recherche</h6>
-      <p class="mb-0" style="font-size:13px">La recherche porte sur le numéro client et le nom.</p>
+      <h6>Utiliser les filtres ci-dessus pour rechercher des clients</h6>
+      <p class="mb-0" style="font-size:13px">Recherche par numéro, nom, agence, gestionnaire ou statut.</p>
     </div>
   </div>
 

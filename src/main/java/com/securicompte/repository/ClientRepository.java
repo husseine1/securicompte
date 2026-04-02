@@ -21,10 +21,25 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     @Query("""
         SELECT c FROM Client c
-        WHERE LOWER(c.numeroClient) LIKE LOWER(CONCAT('%',:q,'%'))
-           OR LOWER(c.nom)          LIKE LOWER(CONCAT('%',:q,'%'))
+        WHERE (:q = '' OR LOWER(c.numeroClient) LIKE LOWER(CONCAT('%',:q,'%'))
+                       OR LOWER(c.nom)          LIKE LOWER(CONCAT('%',:q,'%')))
+          AND (:agence = '' OR c.agenceLib = :agence)
+          AND (:gestionnaire = '' OR c.gestionnaire = :gestionnaire)
+          AND (:sinistre = false OR c.dateSinistre IS NOT NULL)
+          AND (:compteFerme = false OR c.dateCompteFerme IS NOT NULL)
+          AND (:annee = 0 OR EXISTS (
+                SELECT 1 FROM Impaye i WHERE i.client = c
+                  AND i.annee = :annee
+                  AND (:mois = 0 OR i.mois = :mois)))
         """)
-    Page<Client> rechercherClients(@Param("q") String q, Pageable pageable);
+    Page<Client> rechercherClients(@Param("q") String q,
+                                   @Param("agence") String agence,
+                                   @Param("gestionnaire") String gestionnaire,
+                                   @Param("sinistre") boolean sinistre,
+                                   @Param("compteFerme") boolean compteFerme,
+                                   @Param("annee") int annee,
+                                   @Param("mois") int mois,
+                                   Pageable pageable);
 
     @Query("SELECT DISTINCT c.agenceLib FROM Client c WHERE c.agenceLib IS NOT NULL ORDER BY c.agenceLib")
     List<String> findDistinctAgences();

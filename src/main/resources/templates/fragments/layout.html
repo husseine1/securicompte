@@ -38,6 +38,7 @@
         .badge-impaye    { background:#dc3545; color:#fff; }
         .badge-regularise{ background:#198754; color:#fff; }
         .badge-litige    { background:#fd7e14; color:#fff; }
+        .badge-compte-ferme { background:#dc3545; color:#fff; }
 
         /* Table */
         .table th { background:#f8f9fa; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
@@ -90,6 +91,13 @@
                th:classappend="${requestURI.startsWith('/sinistre')} ? 'active'"
                th:href="@{/sinistre/import}">
                 <i class="fas fa-file-medical"></i>Import Sinistres
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/compte-ferme')} ? 'active'"
+               th:href="@{/compte-ferme/import}">
+                <i class="fas fa-folder-minus"></i>Import Comptes Fermés
             </a>
         </li>
         <li class="nav-section-title">OUTILS</li>

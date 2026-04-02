@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Détail import comptes fermés</title></head>
+<body>
+<section>
+  <div class="mb-3">
+    <a th:href="@{/compte-ferme/import}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Retour
+    </a>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 pt-3">
+      <h6 class="mb-0 fw-bold">
+        <i class="fas fa-folder-minus me-2 text-danger"></i>
+        <span th:text="${imp.nomFichier}"></span>
+      </h6>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3 text-center">
+          <div class="fw-bold fs-3 text-danger" th:text="${imp.nbFermes}">0</div>
+          <div class="text-muted" style="font-size:12px">Comptes fermés</div>
+        </div>
+        <div class="col-md-3 text-center">
+          <div class="fw-bold fs-3 text-secondary" th:text="${imp.nbNonTrouves}">0</div>
+          <div class="text-muted" style="font-size:12px">Non trouvés</div>
+        </div>
+        <div class="col-md-3 text-center">
+          <div class="fw-bold fs-3 text-warning" th:text="${imp.nbErreurs}">0</div>
+          <div class="text-muted" style="font-size:12px">Erreurs</div>
+        </div>
+        <div class="col-md-3 text-center">
+          <span class="badge fs-6"
+                th:classappend="${imp.statut?.name() == 'SUCCES'} ? 'bg-success' :
+                                (${imp.statut?.name() == 'ECHEC'} ? 'bg-danger' : 'bg-warning text-dark')"
+                th:text="${imp.statut}"></span>
+        </div>
+      </div>
+      <hr>
+      <table class="table table-sm table-borderless mb-0">
+        <tr>
+          <td class="text-muted" style="width:160px">Importé le</td>
+          <td th:text="${#temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm')}"></td>
+        </tr>
+        <tr th:if="${imp.dateFinImport != null}">
+          <td class="text-muted">Terminé le</td>
+          <td th:text="${#temporals.format(imp.dateFinImport,'dd/MM/yyyy HH:mm')}"></td>
+        </tr>
+        <tr>
+          <td class="text-muted">Importé par</td>
+          <td th:text="${imp.importePar ?: '-'}"></td>
+        </tr>
+      </table>
+      <div th:if="${imp.messageErreur != null}" class="mt-3">
+        <div class="alert alert-warning" style="font-size:12px;white-space:pre-wrap"
+             th:text="${imp.messageErreur}"></div>
+      </div>
+      <div sec:authorize="hasRole('ROLE_ADMIN')" class="mt-3"
+           th:if="${imp.statut?.name() != 'EN_COURS'}">
+        <form th:action="@{/compte-ferme/import/{id}/supprimer(id=${imp.id})}" method="post"
+              onsubmit="return confirm('Supprimer cet import ?')">
+          <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="fas fa-trash me-1"></i>Supprimer cet import
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+</body>
+</html>

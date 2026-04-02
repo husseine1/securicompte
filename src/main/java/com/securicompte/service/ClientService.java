@@ -37,11 +37,20 @@ public class ClientService {
     private final ImpayeMapper impayeMapper;
 
     /**
-     * Recherche un client par numéro ou nom
+     * Recherche un client par numéro, nom, agence, gestionnaire ou statut
      */
-    public Page<ClientDto> rechercherClients(String recherche, int page, int size) {
+    public Page<ClientDto> rechercherClients(String recherche, String agence, String gestionnaire,
+                                              boolean sinistre, boolean compteFerme,
+                                              int annee, int mois, int page, int size) {
         Page<Client> clients = clientRepository.rechercherClients(
-            recherche, PageRequest.of(page, size, Sort.by("nom")));
+            recherche,
+            agence != null ? agence : "",
+            gestionnaire != null ? gestionnaire : "",
+            sinistre,
+            compteFerme,
+            annee,
+            mois,
+            PageRequest.of(page, size, Sort.by("nom")));
         return clients.map(c -> ClientDto.builder()
             .id(c.getId())
             .numeroClient(c.getNumeroClient())
@@ -49,6 +58,8 @@ public class ClientService {
             .zoneLib(c.getZoneLib())
             .agenceLib(c.getAgenceLib())
             .gestionnaire(c.getGestionnaire())
+            .dateSinistre(c.getDateSinistre())
+            .dateCompteFerme(c.getDateCompteFerme())
             .build());
     }
 
@@ -68,7 +79,17 @@ public class ClientService {
             .map(arr -> arr[0] + "_" + arr[1])
             .collect(Collectors.toSet());
 
-        List<HistoriquePaiementDto> historique = construireHistorique(souscriptions, impayes, stock, client.getDateSinistre(), moisImportes);
+        // Date de première souscription
+        LocalDate dateSouscription = souscriptions.stream()
+            .map(Souscription::getDatSouscription)
+            .filter(Objects::nonNull)
+            .filter(d -> d.getYear() >= 2000)
+            .min(LocalDate::compareTo)
+            .orElse(null);
+
+        List<HistoriquePaiementDto> historique = construireHistorique(
+            souscriptions, impayes, stock,
+            client.getDateSinistre(), client.getDateCompteFerme(), moisImportes);
 
         // Compléter la liste des impayés avec les mois détectés dans l'historique
         // mais absents de la table impaye (détection manquée)
@@ -115,6 +136,8 @@ public class ClientService {
             .agenceLib(client.getAgenceLib())
             .gestionnaire(client.getGestionnaire())
             .dateSinistre(client.getDateSinistre())
+            .dateCompteFerme(client.getDateCompteFerme())
+            .dateSouscription(dateSouscription)
             .souscriptions(souscriptions.stream().map(this::toSouscriptionDto).collect(Collectors.toList()))
             .stockMensuel(stock.stream().map(this::toStockDto).collect(Collectors.toList()))
             .historiquePaiements(historique)
@@ -134,6 +157,7 @@ public class ClientService {
                                                                List<Impaye> impayes,
                                                                List<StockMensuel> stock,
                                                                LocalDate dateSinistre,
+                                                               LocalDate dateCompteFerme,
                                                                Set<String> moisImportes) {
         if (souscriptions.isEmpty()) return new ArrayList<>();
 
@@ -179,12 +203,16 @@ public class ClientService {
 
             boolean presentDansStock = moisEnStock.contains(cle);
             boolean importExiste    = moisImportes.contains(cle);
+            boolean moisFermeture   = dateCompteFerme != null
+                && !curseur.isBefore(dateCompteFerme.withDayOfMonth(1));
             boolean moisSinistre    = dateSinistre != null
                 && !curseur.isBefore(dateSinistre.withDayOfMonth(1));
 
             String statut;
             if (!importExiste) {
                 statut = "NON_IMPORTE";
+            } else if (moisFermeture) {
+                statut = presentDansStock ? "TROP_PERCU" : "COMPTE_FERME";
             } else if (moisSinistre) {
                 statut = presentDansStock ? "TROP_PERCU" : "SINISTRE";
             } else if (presentDansStock) {

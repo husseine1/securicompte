@@ -53,6 +53,9 @@ public class Client {
     @Column(name = "date_sinistre")
     private LocalDate dateSinistre;
 
+    @Column(name = "date_compte_ferme")
+    private LocalDate dateCompteFerme;
+
     @Column(name = "actif")
     @Builder.Default
     private Boolean actif = true;
