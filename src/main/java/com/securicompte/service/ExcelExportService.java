@@ -1,5 +1,6 @@
 package com.securicompte.service;
 
+import com.securicompte.dto.ClientDto;
 import com.securicompte.dto.ImpayeDto;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
@@ -17,6 +18,56 @@ import java.util.List;
 public class ExcelExportService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    /**
+     * Exporte la liste des clients (résultat de recherche) vers un fichier Excel
+     */
+    public byte[] exporterClients(List<ClientDto> clients) throws IOException {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Clients");
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle sinistreStyle = createImpayeStyle(workbook);
+            CellStyle fermeStyle = createFermeStyle(workbook);
+            CellStyle normalStyle = createRegulariseStyle(workbook);
+
+            String[] headers = {
+                "N°", "Numéro Client", "Nom", "Agence", "Gestionnaire",
+                "Zone", "Statut", "Date Sinistre", "Date Fermeture Compte"
+            };
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int rowNum = 1;
+            for (ClientDto c : clients) {
+                Row row = sheet.createRow(rowNum++);
+                CellStyle style = c.getDateCompteFerme() != null ? fermeStyle
+                                : c.getDateSinistre() != null ? sinistreStyle : normalStyle;
+
+                String statut = c.getDateCompteFerme() != null ? "Compte fermé"
+                              : c.getDateSinistre() != null ? "Sinistré" : "Actif";
+
+                createCell(row, 0, rowNum - 1, null);
+                createCell(row, 1, c.getNumeroClient(), style);
+                createCell(row, 2, c.getNom(), style);
+                createCell(row, 3, c.getAgenceLib(), style);
+                createCell(row, 4, c.getGestionnaire(), style);
+                createCell(row, 5, c.getZoneLib(), style);
+                createCell(row, 6, statut, style);
+                createCell(row, 7, c.getDateSinistre() != null ? c.getDateSinistre().format(DATE_FMT) : "", style);
+                createCell(row, 8, c.getDateCompteFerme() != null ? c.getDateCompteFerme().format(DATE_FMT) : "", style);
+            }
+
+            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
 
     /**
      * Exporte la liste des impayés vers un fichier Excel
@@ -172,6 +223,14 @@ public class ExcelExportService {
     private CellStyle createRegulariseStyle(Workbook workbook) {
         CellStyle style = workbook.createCellStyle();
         style.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setBorderBottom(BorderStyle.THIN);
+        return style;
+    }
+
+    private CellStyle createFermeStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        style.setFillForegroundColor(IndexedColors.CORAL.getIndex());
         style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         style.setBorderBottom(BorderStyle.THIN);
         return style;

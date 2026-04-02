@@ -100,6 +100,10 @@
         Résultats
         <span class="badge bg-primary ms-1" th:text="${totalElements}"></span>
       </h6>
+      <a class="btn btn-sm btn-success"
+         th:href="@{/clients/export(q=${recherche},agence=${agence},gestionnaire=${gestionnaire},sinistre=${sinistre},compteFerme=${compteFerme},annee=${annee},mois=${mois})}">
+        <i class="fas fa-file-excel me-1"></i>Exporter Excel
+      </a>
     </div>
     <div class="card-body p-0">
       <table class="table table-hover mb-0">

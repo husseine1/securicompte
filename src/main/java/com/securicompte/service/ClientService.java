@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -286,6 +287,28 @@ public class ClientService {
             ? LocalDate.parse(dateSinistreStr) : null;
         client.setDateSinistre(dateSinistre);
         clientRepository.save(client);
+    }
+
+    public List<ClientDto> exporterClients(String recherche, String agence, String gestionnaire,
+                                            boolean sinistre, boolean compteFerme, int annee, int mois) {
+        return clientRepository.rechercherClients(
+                recherche,
+                agence != null ? agence : "",
+                gestionnaire != null ? gestionnaire : "",
+                sinistre, compteFerme, annee, mois,
+                Pageable.unpaged())
+            .stream()
+            .map(c -> ClientDto.builder()
+                .id(c.getId())
+                .numeroClient(c.getNumeroClient())
+                .nom(c.getNom())
+                .zoneLib(c.getZoneLib())
+                .agenceLib(c.getAgenceLib())
+                .gestionnaire(c.getGestionnaire())
+                .dateSinistre(c.getDateSinistre())
+                .dateCompteFerme(c.getDateCompteFerme())
+                .build())
+            .collect(Collectors.toList());
     }
 
     public List<String> getAgences() {

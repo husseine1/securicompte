@@ -1,7 +1,14 @@
 package com.securicompte.controller;
 
 import com.securicompte.dto.ClientDetailDto;
+import com.securicompte.dto.ClientDto;
 import com.securicompte.service.ClientService;
+import com.securicompte.service.ExcelExportService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import java.time.LocalDate;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +23,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class ClientController {
 
     private final ClientService clientService;
+    private final ExcelExportService excelExportService;
 
     @GetMapping("/recherche")
     @PreAuthorize("isAuthenticated()")
@@ -50,6 +58,30 @@ public class ClientController {
         model.addAttribute("agences", clientService.getAgences());
         model.addAttribute("gestionnaires", clientService.getGestionnaires());
         return "client/recherche";
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<byte[]> exportClients(
+            @RequestParam(value = "q", required = false, defaultValue = "") String recherche,
+            @RequestParam(value = "agence", required = false, defaultValue = "") String agence,
+            @RequestParam(value = "gestionnaire", required = false, defaultValue = "") String gestionnaire,
+            @RequestParam(value = "sinistre", required = false, defaultValue = "false") boolean sinistre,
+            @RequestParam(value = "compteFerme", required = false, defaultValue = "false") boolean compteFerme,
+            @RequestParam(value = "annee", required = false, defaultValue = "0") int annee,
+            @RequestParam(value = "mois", required = false, defaultValue = "0") int mois) {
+        try {
+            List<ClientDto> clients = clientService.exporterClients(
+                recherche, agence, gestionnaire, sinistre, compteFerme, annee, mois);
+            byte[] data = excelExportService.exporterClients(clients);
+            String filename = "clients_" + LocalDate.now() + ".xlsx";
+            return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(data);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @GetMapping("/{id}")
