@@ -1,6 +1,5 @@
 package com.securicompte.dto;
 
-import com.securicompte.enums.StatutChangement;
 import lombok.Builder;
 import lombok.Data;
 
@@ -17,10 +16,5 @@ public class ChangementClientDto {
     private String champLabel;
     private String valeurAvant;
     private String valeurApres;
-    private StatutChangement statut;
     private LocalDateTime dateDetection;
-    private LocalDateTime dateDecision;
-    private String decidePar;
-    private Integer annee;
-    private Integer mois;
 }

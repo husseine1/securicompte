@@ -168,6 +168,20 @@ public class ImportService {
                 log.warn("Détection changements de prime non complétée (non bloquant) : {}", e.getMessage());
             }
 
+            // Tx5 : notifier les changements de données client (non bloquant)
+            try {
+                final String username = importePar.getUsername();
+                tx.execute(status -> {
+                    long nb = changementClientRepository.countByAnneeAndMois(annee, mois);
+                    if (nb > 0) {
+                        notificationService.creerNotificationChangementClientImport(annee, mois, nb, username);
+                    }
+                    return null;
+                });
+            } catch (Exception e) {
+                log.warn("Notification changements client non complétée (non bloquant) : {}", e.getMessage());
+            }
+
             ImportFichier saved = importFichierRepository.findById(importId).orElseThrow();
             return ImportResultDto.builder()
                 .importId(importId)
@@ -689,86 +703,6 @@ public class ImportService {
             .stream().map(this::toChangementClientDto).collect(Collectors.toList());
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public void approuverChangementClient(Long id, String username) {
-        ChangementClient c = changementClientRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Changement client introuvable : " + id));
-        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
-        c.setStatut(StatutChangement.APPROUVE);
-        c.setDateDecision(LocalDateTime.now());
-        c.setDecidePar(username);
-        changementClientRepository.save(c);
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public void refuserChangementClient(Long id, String username) {
-        ChangementClient c = changementClientRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Changement client introuvable : " + id));
-        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
-        revertChampClient(c.getClient(), c.getChamp(), c.getValeurAvant());
-        clientRepository.save(c.getClient());
-        c.setStatut(StatutChangement.REFUSE);
-        c.setDateDecision(LocalDateTime.now());
-        c.setDecidePar(username);
-        changementClientRepository.save(c);
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public int approuverTousChangementsClient(int annee, int mois, String username) {
-        List<ChangementClient> enAttente = changementClientRepository
-            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
-        if (enAttente.isEmpty()) return 0;
-        LocalDateTime now = LocalDateTime.now();
-        enAttente.forEach(c -> {
-            c.setStatut(StatutChangement.APPROUVE);
-            c.setDateDecision(now);
-            c.setDecidePar(username);
-        });
-        changementClientRepository.saveAll(enAttente);
-        return enAttente.size();
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public int refuserTousChangementsClient(int annee, int mois, String username) {
-        List<ChangementClient> enAttente = changementClientRepository
-            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
-        if (enAttente.isEmpty()) return 0;
-        // Regrouper les changements par client pour éviter plusieurs saves
-        Map<Long, Client> clientsAMaj = new java.util.LinkedHashMap<>();
-        for (ChangementClient c : enAttente) {
-            Client cl = clientsAMaj.computeIfAbsent(c.getClient().getId(), k -> c.getClient());
-            revertChampClient(cl, c.getChamp(), c.getValeurAvant());
-        }
-        clientRepository.saveAll(clientsAMaj.values());
-        LocalDateTime now = LocalDateTime.now();
-        enAttente.forEach(c -> {
-            c.setStatut(StatutChangement.REFUSE);
-            c.setDateDecision(now);
-            c.setDecidePar(username);
-        });
-        changementClientRepository.saveAll(enAttente);
-        log.info("{} changements client refusés en bloc pour {}/{}", enAttente.size(), mois, annee);
-        return enAttente.size();
-    }
-
-    private void revertChampClient(Client client, String champ, String valeurAvant) {
-        switch (champ) {
-            case "nom"           -> client.setNom(valeurAvant);
-            case "agenceLib"     -> client.setAgenceLib(valeurAvant);
-            case "gestionnaire"  -> client.setGestionnaire(valeurAvant);
-            case "zoneLib"       -> client.setZoneLib(valeurAvant);
-            case "dateNaissance" -> {
-                if (valeurAvant == null) {
-                    client.setDateNaissance(null);
-                } else {
-                    try { client.setDateNaissance(java.time.LocalDate.parse(valeurAvant)); }
-                    catch (Exception ignored) { client.setDateNaissance(null); }
-                }
-            }
-            default -> { /* champ inconnu, rien à faire */ }
-        }
-    }
-
     private ChangementClientDto toChangementClientDto(ChangementClient c) {
         Client cl = c.getClient();
         String champLabel = switch (c.getChamp()) {
@@ -788,12 +722,7 @@ public class ImportService {
             .champLabel(champLabel)
             .valeurAvant(c.getValeurAvant())
             .valeurApres(c.getValeurApres())
-            .statut(c.getStatut())
             .dateDetection(c.getDateDetection())
-            .dateDecision(c.getDateDecision())
-            .decidePar(c.getDecidePar())
-            .annee(c.getAnnee())
-            .mois(c.getMois())
             .build();
     }
 

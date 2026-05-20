@@ -111,6 +111,23 @@ public class NotificationService {
                 nbChangements, mois, annee);
     }
 
+    @Transactional
+    public void creerNotificationChangementClientImport(int annee, int mois, long nbChangements, String importePar) {
+        String message = String.format(
+                "Import %s %d : %d modification(s) de données client détectée(s).",
+                getMoisNom(mois), annee, nbChangements
+        );
+        Notification notif = Notification.builder()
+                .type("CHANGEMENT_CLIENT_IMPORT")
+                .message(message)
+                .anneeImpaye(annee)
+                .moisImpaye(mois)
+                .creePar(importePar)
+                .build();
+        notificationRepository.save(notif);
+        log.info("Notification créée : {} modification(s) de données client pour {}/{}", nbChangements, mois, annee);
+    }
+
     @Transactional(readOnly = true)
     public List<Notification> getNonLues() {
         return notificationRepository.findByLuFalseOrderByCreatedAtDesc();

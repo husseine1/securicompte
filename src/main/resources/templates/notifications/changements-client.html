@@ -1,13 +1,9 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
-      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
       th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
 <head><title>Changements données client - Gestion des Impayés</title></head>
 <body>
 <section>
-
-  <input type="hidden" id="csrf-token"  th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-  <input type="hidden" id="csrf-header" th:value="${_csrf.headerName}">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -21,24 +17,6 @@
       </small>
     </div>
     <div class="d-flex gap-2 align-items-center">
-      <div sec:authorize="hasRole('ROLE_ADMIN')" class="d-flex gap-2" th:if="${!changements.empty}">
-        <form th:action="@{/import/{a}/{m}/changements-client/approuver-tous(a=${annee},m=${mois})}"
-              method="post"
-              onsubmit="return confirm('Confirmer toutes les modifications EN ATTENTE ?')">
-          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-          <button type="submit" class="btn btn-sm btn-success">
-            <i class="fas fa-check-double me-1"></i>Confirmer tout
-          </button>
-        </form>
-        <form th:action="@{/import/{a}/{m}/changements-client/refuser-tous(a=${annee},m=${mois})}"
-              method="post"
-              onsubmit="return confirm('Annuler toutes les modifications EN ATTENTE ? Les valeurs précédentes seront restaurées.')">
-          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-          <button type="submit" class="btn btn-sm btn-danger">
-            <i class="fas fa-times-circle me-1"></i>Annuler tout
-          </button>
-        </form>
-      </div>
       <a th:href="@{/import/{a}/{m}/changements-prime(a=${annee},m=${mois})}"
          class="btn btn-sm btn-outline-warning">
         <i class="fas fa-exchange-alt me-1"></i>Changements prime
@@ -47,11 +25,6 @@
         <i class="fas fa-arrow-left me-1"></i>Retour
       </a>
     </div>
-  </div>
-
-  <div th:if="${succes}" class="alert alert-success alert-dismissible fade show py-2" role="alert">
-    <i class="fas fa-check-circle me-2"></i><span th:text="${succes}"></span>
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
   </div>
 
   <div class="card border-0 shadow-sm">
@@ -65,84 +38,46 @@
               <th style="width:130px">Champ modifié</th>
               <th>Valeur précédente</th>
               <th>Nouvelle valeur</th>
-              <th style="width:90px">Statut</th>
-              <th>Décision</th>
-              <th style="width:120px">Actions</th>
+              <th style="width:120px">Détecté le</th>
+              <th style="width:60px">Fiche</th>
             </tr>
           </thead>
           <tbody>
-            <tr th:each="c : ${changements}" th:id="'row-' + ${c.id}">
+            <tr th:each="c : ${changements}">
 
               <td class="fw-semibold" th:text="${c.numeroClient}"></td>
 
               <td th:text="${c.nomClient}"></td>
 
-              <!-- Champ modifié -->
               <td>
                 <span class="badge bg-secondary" th:text="${c.champLabel}"></span>
               </td>
 
-              <!-- Valeur précédente -->
               <td>
                 <span th:if="${c.valeurAvant != null}" class="text-danger" th:text="${c.valeurAvant}"></span>
                 <span th:if="${c.valeurAvant == null}" class="text-muted fst-italic">vide</span>
               </td>
 
-              <!-- Nouvelle valeur -->
               <td>
                 <span class="text-success fw-semibold" th:text="${c.valeurApres}"></span>
               </td>
 
-              <!-- Statut badge -->
-              <td>
-                <span th:id="'badge-' + ${c.id}"
-                      class="badge"
-                      th:classappend="${c.statut.name() == 'APPROUVE'} ? 'bg-success' :
-                                      (${c.statut.name() == 'REFUSE'}   ? 'bg-danger'  : 'bg-warning text-dark')"
-                      th:text="${c.statut.name() == 'EN_ATTENTE' ? 'En attente' :
-                                (c.statut.name() == 'APPROUVE'   ? 'Confirmé'   : 'Annulé')}"></span>
+              <td style="font-size:11px">
+                <span th:if="${c.dateDetection != null}"
+                      th:text="${#temporals.format(c.dateDetection, 'dd/MM/yyyy HH:mm')}"></span>
               </td>
 
-              <!-- Décision -->
-              <td style="font-size:11px" th:id="'dec-' + ${c.id}">
-                <span th:if="${c.dateDecision != null}">
-                  <span th:text="${#temporals.format(c.dateDecision, 'dd/MM HH:mm')}"></span>
-                  <br><span class="text-muted" th:text="${c.decidePar}"></span>
-                </span>
-                <span th:if="${c.dateDecision == null}" class="text-muted">—</span>
-              </td>
-
-              <!-- Actions -->
               <td>
-                <div class="d-flex gap-1 align-items-center">
-                  <a th:if="${c.clientId != null}"
-                     th:href="@{/clients/{id}(id=${c.clientId})}"
-                     class="btn btn-sm btn-outline-primary py-0 px-2" title="Fiche client">
-                    <i class="fas fa-user"></i>
-                  </a>
-                  <span sec:authorize="hasRole('ROLE_ADMIN')"
-                        th:if="${c.statut.name() == 'EN_ATTENTE'}">
-                    <button type="button"
-                            class="btn btn-sm btn-success py-0 px-2"
-                            title="Confirmer (conserver la nouvelle valeur)"
-                            th:attr="data-id=${c.id}"
-                            onclick="deciderClient(this.dataset.id, 'approuver')">
-                      <i class="fas fa-check"></i>
-                    </button>
-                    <button type="button"
-                            class="btn btn-sm btn-danger py-0 px-2"
-                            title="Annuler (restaurer l'ancienne valeur)"
-                            th:attr="data-id=${c.id}"
-                            onclick="deciderClient(this.dataset.id, 'refuser')">
-                      <i class="fas fa-undo"></i>
-                    </button>
-                  </span>
-                </div>
+                <a th:if="${c.clientId != null}"
+                   th:href="@{/clients/{id}(id=${c.clientId})}"
+                   class="btn btn-sm btn-outline-primary py-0 px-2" title="Fiche client">
+                  <i class="fas fa-user"></i>
+                </a>
               </td>
 
             </tr>
             <tr th:if="${changements.empty}">
-              <td colspan="8" class="text-center text-muted py-5">
+              <td colspan="7" class="text-center text-muted py-5">
                 <i class="fas fa-check-circle fa-3x text-success mb-2 d-block"></i>
                 Aucun changement de données client détecté pour cette période.
               </td>
@@ -154,52 +89,11 @@
     <div class="card-footer bg-white border-0" th:if="${!changements.empty}">
       <small class="text-muted">
         <i class="fas fa-info-circle me-1"></i>
-        <strong>Confirmer</strong> = conserver la nouvelle valeur &nbsp;|&nbsp;
-        <strong>Annuler</strong> = restaurer la valeur précédente sur la fiche client
+        Ces modifications ont été appliquées automatiquement lors de l'import.
+        Cliquez sur la fiche client pour vérifier ou corriger manuellement.
       </small>
     </div>
   </div>
-
-  <script th:inline="javascript">
-  /*<![CDATA[*/
-  const csrfToken  = document.getElementById('csrf-token').value;
-  const csrfHeader = document.getElementById('csrf-header').value;
-
-  function deciderClient(id, action) {
-    const label = action === 'approuver' ? 'confirmer cette modification' : 'annuler et restaurer l\'ancienne valeur';
-    if (!confirm('Voulez-vous ' + label + ' ?')) return;
-
-    fetch('/import/changements-client/' + id + '/' + action, {
-      method: 'POST',
-      headers: { [csrfHeader]: csrfToken }
-    })
-    .then(r => r.json())
-    .then(data => {
-      const badge = document.getElementById('badge-' + id);
-      const decEl = document.getElementById('dec-' + id);
-      const row   = document.getElementById('row-' + id);
-
-      if (data.statut === 'APPROUVE') {
-        badge.className   = 'badge bg-success';
-        badge.textContent = 'Confirmé';
-      } else {
-        badge.className   = 'badge bg-danger';
-        badge.textContent = 'Annulé';
-      }
-
-      row.querySelectorAll('button.btn-success, button.btn-danger').forEach(b => b.remove());
-
-      const now = new Date();
-      const fmt = String(now.getDate()).padStart(2,'0') + '/' +
-                  String(now.getMonth()+1).padStart(2,'0') + ' ' +
-                  String(now.getHours()).padStart(2,'0') + ':' +
-                  String(now.getMinutes()).padStart(2,'0');
-      decEl.innerHTML = '<span>' + fmt + '</span><br><span class="text-muted">Vous</span>';
-    })
-    .catch(() => alert('Erreur lors de la mise à jour.'));
-  }
-  /*]]>*/
-  </script>
 
 </section>
 </body>

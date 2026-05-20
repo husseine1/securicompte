@@ -223,39 +223,4 @@ public class ImportController {
         return "notifications/changements-client";
     }
 
-    @PostMapping("/changements-client/{id}/approuver")
-    @PreAuthorize("hasRole('ADMIN')")
-    @ResponseBody
-    public Map<String, Object> approuverChangementClient(@PathVariable Long id,
-                                                          @AuthenticationPrincipal User user) {
-        importService.approuverChangementClient(id, user.getUsername());
-        return Map.of("statut", "APPROUVE");
-    }
-
-    @PostMapping("/changements-client/{id}/refuser")
-    @PreAuthorize("hasRole('ADMIN')")
-    @ResponseBody
-    public Map<String, Object> refuserChangementClient(@PathVariable Long id,
-                                                        @AuthenticationPrincipal User user) {
-        importService.refuserChangementClient(id, user.getUsername());
-        return Map.of("statut", "REFUSE");
-    }
-
-    @PostMapping("/{annee}/{mois}/changements-client/approuver-tous")
-    @PreAuthorize("hasRole('ADMIN')")
-    public String approuverTousClient(@PathVariable int annee, @PathVariable int mois,
-                                       @AuthenticationPrincipal User user, RedirectAttributes ra) {
-        int nb = importService.approuverTousChangementsClient(annee, mois, user.getUsername());
-        ra.addFlashAttribute("succes", nb + " changement(s) approuvé(s).");
-        return "redirect:/import/" + annee + "/" + mois + "/changements-client";
-    }
-
-    @PostMapping("/{annee}/{mois}/changements-client/refuser-tous")
-    @PreAuthorize("hasRole('ADMIN')")
-    public String refuserTousClient(@PathVariable int annee, @PathVariable int mois,
-                                     @AuthenticationPrincipal User user, RedirectAttributes ra) {
-        int nb = importService.refuserTousChangementsClient(annee, mois, user.getUsername());
-        ra.addFlashAttribute("succes", nb + " changement(s) refusé(s).");
-        return "redirect:/import/" + annee + "/" + mois + "/changements-client";
-    }
 }
