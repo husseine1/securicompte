@@ -493,12 +493,10 @@ public class ImportService {
             Souscription souscription = souscriptionParClient.get(stock.getClient().getId());
             if (souscription == null) continue;
 
-            String scAvant   = nvl(souscription.getSecuricompte());
-            String scApres   = nvl(stock.getSecuricompte());
-            String commAvant = nvl(souscription.getCommissions());
-            String commApres = nvl(stock.getCommissions());
+            boolean scChange   = !java.util.Objects.equals(souscription.getSecuricompte(), stock.getSecuricompte());
+            boolean commChange = !bdEgal(souscription.getCommissions(), stock.getCommissions());
 
-            if (!scAvant.equals(scApres) || !commAvant.equals(commApres)) {
+            if (scChange || commChange) {
                 aCreer.add(ChangementPrime.builder()
                     .client(stock.getClient())
                     .annee(annee).mois(mois)
@@ -513,7 +511,9 @@ public class ImportService {
 
                 if (exemples.size() < 5) {
                     exemples.add(String.format("%s (SC: %s→%s | Com: %s→%s)",
-                        stock.getClient().getNom(), scAvant, scApres, commAvant, commApres));
+                        stock.getClient().getNom(),
+                        nvl(souscription.getSecuricompte()), nvl(stock.getSecuricompte()),
+                        nvl(souscription.getCommissions()), nvl(stock.getCommissions())));
                 }
             }
         }
@@ -532,6 +532,12 @@ public class ImportService {
 
     private String nvl(Object o) {
         return o != null ? o.toString() : "N/A";
+    }
+
+    private boolean bdEgal(java.math.BigDecimal a, java.math.BigDecimal b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.compareTo(b) == 0;
     }
 
     public ImportFichier getImportById(Long id) {
