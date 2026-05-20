@@ -1,8 +1,10 @@
 package com.securicompte.service;
 
+import com.securicompte.dto.ChangementClientDto;
 import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
 import com.securicompte.entity.*;
+import com.securicompte.enums.StatutChangement;
 import com.securicompte.enums.StatutImport;
 import com.securicompte.enums.TypeSouscription;
 import com.securicompte.repository.*;
@@ -26,15 +28,18 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ImportService {
 
-    private final ExcelParserService       excelParserService;
-    private final ImpayeDetectionService   impayeDetectionService;
-    private final NotificationService      notificationService;
-    private final ImportFichierRepository  importFichierRepository;
-    private final ClientRepository         clientRepository;
-    private final SouscriptionRepository   souscriptionRepository;
-    private final StockMensuelRepository   stockMensuelRepository;
-    private final ImpayeRepository         impayeRepository;
-    private final PlatformTransactionManager transactionManager;
+    private final ExcelParserService            excelParserService;
+    private final ImpayeDetectionService        impayeDetectionService;
+    private final NotificationService           notificationService;
+    private final ImportFichierRepository       importFichierRepository;
+    private final ImportFichierBytesRepository  importFichierBytesRepository;
+    private final ClientRepository              clientRepository;
+    private final SouscriptionRepository        souscriptionRepository;
+    private final StockMensuelRepository        stockMensuelRepository;
+    private final ImpayeRepository              impayeRepository;
+    private final ChangementPrimeRepository     changementPrimeRepository;
+    private final ChangementClientRepository    changementClientRepository;
+    private final PlatformTransactionManager    transactionManager;
 
     /**
      * Version asynchrone : lance l'import dans un thread dédié et retourne immédiatement.
@@ -46,9 +51,30 @@ public class ImportService {
                                      Integer annee, Integer mois, User importePar) {
         MultipartFile file = new ByteArrayMultipartFile(fileBytes, filename, contentType);
         try {
-            importerFichier(file, annee, mois, importePar);
+            ImportResultDto result = importerFichier(file, annee, mois, importePar);
+            if (result.isSucces()) {
+                sauvegarderFichier(result.getImportId(), fileBytes, filename);
+            }
         } catch (Exception e) {
             log.error("Erreur import asynchrone: {}", e.getMessage(), e);
+        }
+    }
+
+    private void sauvegarderFichier(Long importId, byte[] fileBytes, String filename) {
+        try {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status -> {
+                ImportFichier imp = importFichierRepository.findById(importId).orElseThrow();
+                importFichierBytesRepository.deleteById(importId);
+                importFichierBytesRepository.save(ImportFichierBytes.builder()
+                    .importFichier(imp)
+                    .fichierBytes(fileBytes)
+                    .tailleOctets((long) fileBytes.length)
+                    .build());
+                log.info("Fichier '{}' stocké en base ({} octets)", filename, fileBytes.length);
+                return null;
+            });
+        } catch (Exception e) {
+            log.warn("Impossible de sauvegarder le fichier en base: {}", e.getMessage());
         }
     }
 
@@ -105,17 +131,11 @@ public class ImportService {
                 if (isReimport) {
                     supprimerDonneesMois(annee, mois, importFichier.getId());
                 }
-                Map<String, Client> cache = construireClientCache(
-                    excelData.nouvelles(), excelData.anciennes(), excelData.stock());
-                int[] resNn = importerSouscriptionsBulk(
-                    excelData.nouvelles(), TypeSouscription.NOUVELLE, importFichier, cache, errorDetails);
-                int[] resNa = importerSouscriptionsBulk(
-                    excelData.anciennes(), TypeSouscription.ANCIENNE, importFichier, cache, errorDetails);
-                int[] resNs = importerStockBulk(
+                Map<String, Client> cache = construireClientCache(excelData.stock(), annee, mois);
+                int[] res = importerStockEtSouscriptionsBulk(
                     excelData.stock(), annee, mois, importFichier, cache, errorDetails);
                 int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
-                int nbErreurs = resNn[1] + resNa[1] + resNs[1];
-                return new int[]{resNn[0], resNa[0], resNs[0], ni, nbErreurs};
+                return new int[]{res[0], res[1], res[2], ni, res[3]};
             });
 
             // Tx3 : marquer SUCCES
@@ -192,18 +212,12 @@ public class ImportService {
      * Charge tous les clients existants en une seule requête,
      * crée les nouveaux en bulk, retourne un cache Map<numeroClient, Client>.
      */
-    private Map<String, Client> construireClientCache(
-            List<Map<String, Object>> nouvelles,
-            List<Map<String, Object>> anciennes,
-            List<Map<String, Object>> stock) {
+    private Map<String, Client> construireClientCache(List<Map<String, Object>> stock, int annee, int mois) {
 
-        // Collecter la première ligne de chaque numéro de client (toutes feuilles)
         Map<String, Map<String, Object>> premiereLignePar = new LinkedHashMap<>();
-        for (List<Map<String, Object>> feuille : List.of(nouvelles, anciennes, stock)) {
-            for (Map<String, Object> row : feuille) {
-                String num = excelParserService.getNumeroClient(row);
-                if (num != null) premiereLignePar.putIfAbsent(num, row);
-            }
+        for (Map<String, Object> row : stock) {
+            String num = excelParserService.getNumeroClient(row);
+            if (num != null) premiereLignePar.putIfAbsent(num, row);
         }
 
         // Charger les clients existants par lots (limite PostgreSQL : 65 535 paramètres)
@@ -218,9 +232,14 @@ public class ImportService {
 
         // Mettre à jour les infos des clients existants uniquement si les données ont changé
         List<Client> aMettrAJour = new ArrayList<>();
+        List<ChangementClient> changementsACreer = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
         for (Client client : cache.values()) {
             Map<String, Object> row = premiereLignePar.get(client.getNumeroClient());
             if (row != null && clientAChange(client, row)) {
+                // Enregistrer les changements AVANT mise à jour (pour pouvoir revenir en arrière)
+                changementsACreer.addAll(collecterChangementsClient(client, row, annee, mois, now));
                 updateClientInfos(client, row);
                 aMettrAJour.add(client);
             }
@@ -228,6 +247,10 @@ public class ImportService {
         if (!aMettrAJour.isEmpty()) {
             clientRepository.saveAll(aMettrAJour);
             log.info("{} client(s) mis à jour (données modifiées)", aMettrAJour.size());
+        }
+        if (!changementsACreer.isEmpty()) {
+            changementClientRepository.saveAll(changementsACreer);
+            log.info("{} changement(s) de données client persistés (EN_ATTENTE)", changementsACreer.size());
         }
 
         // Créer les nouveaux clients en bulk
@@ -261,94 +284,77 @@ public class ImportService {
     }
 
     /**
-     * Importe les souscriptions en bulk (nouvelles ou anciennes).
-     * Retourne int[]{nbImportées, nbErreurs}.
+     * Importe le stock mensuel ET crée les souscriptions depuis la même feuille.
+     * NOUVELLE si dat_souscription.annee == annee ET dat_souscription.mois == mois, sinon ANCIENNE.
+     * Retourne int[]{nbNouvelles, nbAnciennes, nbStock, nbErreurs}.
      */
-    private int[] importerSouscriptionsBulk(List<Map<String, Object>> rows,
-                                              TypeSouscription type,
-                                              ImportFichier importFichier,
-                                              Map<String, Client> clientCache,
-                                              List<String> errorDetails) {
-        // Charger uniquement les clés des clients présents dans ce fichier (pas tout l'historique)
+    private int[] importerStockEtSouscriptionsBulk(List<Map<String, Object>> rows, int annee, int mois,
+                                                     ImportFichier importFichier,
+                                                     Map<String, Client> clientCache,
+                                                     List<String> errorDetails) {
         List<Long> candidateIds = rows.stream()
             .map(r -> excelParserService.getNumeroClient(r))
             .filter(Objects::nonNull)
             .map(clientCache::get)
             .filter(Objects::nonNull)
-            .map(com.securicompte.entity.Client::getId)
+            .map(Client::getId)
             .distinct()
             .collect(Collectors.toList());
 
         Set<String> existingKeys = new HashSet<>();
-        int batchSizeIds = 5000;
-        for (int i = 0; i < candidateIds.size(); i += batchSizeIds) {
-            List<Long> batch = candidateIds.subList(i, Math.min(i + batchSizeIds, candidateIds.size()));
-            existingKeys.addAll(souscriptionRepository.findExistingKeysForClients(type, batch));
+        for (int i = 0; i < candidateIds.size(); i += 5000) {
+            List<Long> batch = candidateIds.subList(i, Math.min(i + 5000, candidateIds.size()));
+            existingKeys.addAll(souscriptionRepository.findExistingKeysForClients(batch));
         }
 
-        List<Souscription> toSave = new ArrayList<>();
-        int erreurs = 0;
-        for (Map<String, Object> row : rows) {
-            try {
-                String num = excelParserService.getNumeroClient(row);
-                if (num == null) continue;
-                Client client = clientCache.get(num);
-                if (client == null) continue;
+        Set<Long> seenStock = new HashSet<>();
+        List<StockMensuel> stocksToSave = new ArrayList<>();
+        List<Souscription> souscToSave  = new ArrayList<>();
+        int nbNouvelles = 0, nbAnciennes = 0, erreurs = 0;
 
-                Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
-                String key = client.getId() + "_" + s.getDatSouscription() + "_" + type;
-                if (!existingKeys.contains(key)) {
-                    toSave.add(s);
-                    existingKeys.add(key);
-                }
-            } catch (Exception e) {
-                erreurs++;
-                String rawNum = excelParserService.getNumeroClient(row);
-                String msg = "Souscription – " + type + " – client=" + rawNum + " : " + e.getMessage();
-                errorDetails.add(msg);
-                log.warn("Erreur import souscription ligne: {}", e.getMessage());
-            }
-        }
-        souscriptionRepository.saveAll(toSave);
-        return new int[]{toSave.size(), erreurs};
-    }
-
-    /**
-     * Importe le stock mensuel en bulk.
-     * Seul l'identifiant client (colonne CLIENT) est accepté — pas de fallback par NOM
-     * pour éviter les faux positifs en cas d'homonymes.
-     * Retourne int[]{nbImportés, nbErreurs}.
-     */
-    private int[] importerStockBulk(List<Map<String, Object>> rows, int annee, int mois,
-                                     ImportFichier importFichier,
-                                     Map<String, Client> clientCache,
-                                     List<String> errorDetails) {
-        Set<Long> seen = new HashSet<>();
-        List<StockMensuel> toSave = new ArrayList<>();
-        int erreurs = 0;
         for (Map<String, Object> row : rows) {
             try {
                 String num = excelParserService.getNumeroClient(row);
                 if (num == null) {
                     String rawVal = excelParserService.getString(row, "COMPTE");
                     if (rawVal == null) rawVal = excelParserService.getString(row, "CLIENT");
-                    String msg = "Stock – numéro illisible, valeur brute : " + rawVal;
-                    errorDetails.add(msg);
-                    log.warn("Stock – impossible d'extraire le numéro client, valeur brute : {}", rawVal);
+                    if (rawVal == null) {
+                        // Ligne sans compte ni client (total/sous-total probable) — ignorée silencieusement
+                        continue;
+                    }
+                    errorDetails.add("Stock – numéro illisible, valeur brute : " + rawVal);
+                    log.warn("Stock – impossible d'extraire le numéro client : {}", rawVal);
                     erreurs++;
                     continue;
                 }
                 Client client = clientCache.get(num);
                 if (client == null) {
-                    String msg = "Stock – client introuvable pour le numéro extrait : " + num;
-                    errorDetails.add(msg);
+                    errorDetails.add("Stock – client introuvable pour le numéro extrait : " + num);
                     log.warn("Client introuvable pour le numéro: {}", num);
                     erreurs++;
                     continue;
                 }
-                if (!seen.contains(client.getId())) {
-                    toSave.add(excelParserService.rowToStock(row, client, annee, mois, importFichier));
-                    seen.add(client.getId());
+
+                if (!seenStock.contains(client.getId())) {
+                    // Stock mensuel
+                    stocksToSave.add(excelParserService.rowToStock(row, client, annee, mois, importFichier));
+                    seenStock.add(client.getId());
+
+                    // Souscription : type déduit depuis dat_souscription
+                    java.time.LocalDate datSousc = excelParserService.getDate(row, "DATSOUSCRIPTION");
+                    TypeSouscription type = (datSousc != null
+                            && datSousc.getYear() == annee
+                            && datSousc.getMonthValue() == mois)
+                        ? TypeSouscription.NOUVELLE : TypeSouscription.ANCIENNE;
+
+                    Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
+                    String key = client.getId() + "_" + s.getDatSouscription() + "_" + type;
+                    if (!existingKeys.contains(key)) {
+                        souscToSave.add(s);
+                        existingKeys.add(key);
+                        if (type == TypeSouscription.NOUVELLE) nbNouvelles++;
+                        else nbAnciennes++;
+                    }
                 }
             } catch (Exception e) {
                 erreurs++;
@@ -357,31 +363,79 @@ public class ImportService {
                 log.warn("Erreur import stock ligne: {}", e.getMessage());
             }
         }
-        stockMensuelRepository.saveAll(toSave);
-        return new int[]{toSave.size(), erreurs};
+
+        stockMensuelRepository.saveAll(stocksToSave);
+        souscriptionRepository.saveAll(souscToSave);
+        log.info("Stock importé: {} entrées, {} nouvelles souscriptions, {} anciennes, {} erreurs",
+            stocksToSave.size(), nbNouvelles, nbAnciennes, erreurs);
+        return new int[]{nbNouvelles, nbAnciennes, stocksToSave.size(), erreurs};
     }
 
     private boolean clientAChange(Client client, Map<String, Object> row) {
-        String nom         = excelParserService.getString(row, "NOM");
-        String agenceLib   = excelParserService.getString(row, "AGENCELIB");
-        String gestionnaire = excelParserService.getString(row, "GESTIONNAIRE");
-        String zoneLib     = excelParserService.getString(row, "ZONELIB");
-        return !Objects.equals(nom, client.getNom())
-            || !Objects.equals(agenceLib, client.getAgenceLib())
-            || !Objects.equals(gestionnaire, client.getGestionnaire())
-            || !Objects.equals(zoneLib, client.getZoneLib());
+        String nom           = excelParserService.getString(row, "NOM");
+        String agenceLib     = excelParserService.getString(row, "AGENCELIB");
+        String gestionnaire  = excelParserService.getString(row, "GESTIONNAIRE");
+        String zoneLib       = excelParserService.getString(row, "ZONELIB");
+        java.time.LocalDate dateNaissance = excelParserService.getDate(row, "DATNAISSANCE");
+        return (nom != null && !nom.equals(client.getNom()))
+            || (agenceLib != null && !agenceLib.equals(client.getAgenceLib()))
+            || (gestionnaire != null && !gestionnaire.equals(client.getGestionnaire()))
+            || (zoneLib != null && !zoneLib.equals(client.getZoneLib()))
+            || (dateNaissance != null && !dateNaissance.equals(client.getDateNaissance()));
     }
 
     private void updateClientInfos(Client client, Map<String, Object> row) {
-        String nom = excelParserService.getString(row, "NOM");
-        String agenceLib = excelParserService.getString(row, "AGENCELIB");
-        String gestionnaire = excelParserService.getString(row, "GESTIONNAIRE");
-        String zoneLib = excelParserService.getString(row, "ZONELIB");
+        String nom           = excelParserService.getString(row, "NOM");
+        String agenceLib     = excelParserService.getString(row, "AGENCELIB");
+        String gestionnaire  = excelParserService.getString(row, "GESTIONNAIRE");
+        String zoneLib       = excelParserService.getString(row, "ZONELIB");
+        java.time.LocalDate dateNaissance = excelParserService.getDate(row, "DATNAISSANCE");
 
-        if (nom != null) client.setNom(nom);
-        if (agenceLib != null) client.setAgenceLib(agenceLib);
-        if (gestionnaire != null) client.setGestionnaire(gestionnaire);
-        if (zoneLib != null) client.setZoneLib(zoneLib);
+        if (nom != null)           client.setNom(nom);
+        if (agenceLib != null)     client.setAgenceLib(agenceLib);
+        if (gestionnaire != null)  client.setGestionnaire(gestionnaire);
+        if (zoneLib != null)       client.setZoneLib(zoneLib);
+        if (dateNaissance != null) client.setDateNaissance(dateNaissance);
+    }
+
+    private List<ChangementClient> collecterChangementsClient(
+            Client client, Map<String, Object> row, int annee, int mois, LocalDateTime now) {
+        List<ChangementClient> liste = new ArrayList<>();
+        ajouterSiChange(liste, client, annee, mois, now, "nom",
+            client.getNom(), excelParserService.getString(row, "NOM"));
+        ajouterSiChange(liste, client, annee, mois, now, "agenceLib",
+            client.getAgenceLib(), excelParserService.getString(row, "AGENCELIB"));
+        ajouterSiChange(liste, client, annee, mois, now, "gestionnaire",
+            client.getGestionnaire(), excelParserService.getString(row, "GESTIONNAIRE"));
+        ajouterSiChange(liste, client, annee, mois, now, "zoneLib",
+            client.getZoneLib(), excelParserService.getString(row, "ZONELIB"));
+        java.time.LocalDate newDate = excelParserService.getDate(row, "DATNAISSANCE");
+        if (newDate != null && !newDate.equals(client.getDateNaissance())) {
+            liste.add(ChangementClient.builder()
+                .client(client).annee(annee).mois(mois)
+                .champ("dateNaissance")
+                .valeurAvant(client.getDateNaissance() != null ? client.getDateNaissance().toString() : null)
+                .valeurApres(newDate.toString())
+                .statut(com.securicompte.enums.StatutChangement.EN_ATTENTE)
+                .dateDetection(now)
+                .build());
+        }
+        return liste;
+    }
+
+    private void ajouterSiChange(List<ChangementClient> liste, Client client,
+            int annee, int mois, LocalDateTime now,
+            String champ, String ancienne, String nouvelle) {
+        if (nouvelle != null && !nouvelle.equals(ancienne)) {
+            liste.add(ChangementClient.builder()
+                .client(client).annee(annee).mois(mois)
+                .champ(champ)
+                .valeurAvant(ancienne)
+                .valeurApres(nouvelle)
+                .statut(com.securicompte.enums.StatutChangement.EN_ATTENTE)
+                .dateDetection(now)
+                .build());
+        }
     }
 
     private void supprimerDonneesMois(Integer annee, Integer mois, Long importFichierId) {
@@ -391,25 +445,23 @@ public class ImportService {
         log.info("Suppression bulk stock {}/{}", mois, annee);
         souscriptionRepository.deleteByImportFichierId(importFichierId);
         log.info("Suppression bulk des souscriptions de l'import {}/{}", mois, annee);
+        changementPrimeRepository.deleteByAnneeAndMois(annee, mois);
+        log.info("Suppression changements de prime {}/{}", mois, annee);
+        changementClientRepository.deleteByAnneeAndMois(annee, mois);
+        log.info("Suppression changements client {}/{}", mois, annee);
     }
 
     /**
-     * Pour chaque client dans le stock importé ce mois, compare sa prime courante
-     * (securicompte + commissions dans StockMensuel) avec sa prime à la date de souscription
-     * (securicompte + commissions dans l'entité Souscription).
-     * Si un écart est détecté, crée une notification de synthèse.
+     * Détecte et persiste les changements de prime pour le mois importé.
+     * Chaque changement est stocké en base (statut EN_ATTENTE) pour approbation/refus.
      */
     private void detecterChangementsPrimeImport(int annee, int mois, String importePar) {
 
-        // Stock du mois importé — avec client déjà chargé (JOIN FETCH, pas de N+1)
         List<StockMensuel> stocksCourants = stockMensuelRepository.findByAnneeAndMoisWithClient(annee, mois);
         if (stocksCourants.isEmpty()) return;
 
-        // Souscription la plus récente de chaque client (bulk, par lots de 1000)
         List<Long> clientIds = stocksCourants.stream()
-            .map(s -> s.getClient().getId())
-            .distinct()
-            .collect(Collectors.toList());
+            .map(s -> s.getClient().getId()).distinct().collect(Collectors.toList());
 
         Map<Long, Souscription> souscriptionParClient = new HashMap<>();
         int batchSize = 1000;
@@ -419,42 +471,49 @@ public class ImportService {
                 .forEach(s -> souscriptionParClient.putIfAbsent(s.getClient().getId(), s));
         }
 
-        // Comparaison : prime du stock importé vs prime à la date de souscription
+        List<ChangementPrime> aCreer = new ArrayList<>();
         List<String> exemples = new ArrayList<>();
-        int nbChangements = 0;
+        LocalDateTime now = java.time.LocalDateTime.now();
 
         for (StockMensuel stock : stocksCourants) {
             Souscription souscription = souscriptionParClient.get(stock.getClient().getId());
             if (souscription == null) continue;
 
-            String scSousc   = nvl(souscription.getSecuricompte());
-            String scStock   = nvl(stock.getSecuricompte());
-            String commSousc = nvl(souscription.getCommissions());
-            String commStock = nvl(stock.getCommissions());
+            String scAvant   = nvl(souscription.getSecuricompte());
+            String scApres   = nvl(stock.getSecuricompte());
+            String commAvant = nvl(souscription.getCommissions());
+            String commApres = nvl(stock.getCommissions());
 
-            boolean scChange   = !scSousc.equals(scStock);
-            boolean commChange = !commSousc.equals(commStock);
+            if (!scAvant.equals(scApres) || !commAvant.equals(commApres)) {
+                aCreer.add(ChangementPrime.builder()
+                    .client(stock.getClient())
+                    .annee(annee).mois(mois)
+                    .securicompteAvant(souscription.getSecuricompte())
+                    .securicompteApres(stock.getSecuricompte())
+                    .commissionsAvant(souscription.getCommissions())
+                    .commissionsApres(stock.getCommissions())
+                    .datSouscription(souscription.getDatSouscription())
+                    .statut(StatutChangement.EN_ATTENTE)
+                    .dateDetection(now)
+                    .build());
 
-            if (scChange || commChange) {
-                nbChangements++;
                 if (exemples.size() < 5) {
                     exemples.add(String.format("%s (SC: %s→%s | Com: %s→%s)",
-                        stock.getClient().getNom(),
-                        scSousc, scStock, commSousc, commStock));
+                        stock.getClient().getNom(), scAvant, scApres, commAvant, commApres));
                 }
             }
         }
 
-        if (nbChangements > 0) {
+        if (!aCreer.isEmpty()) {
+            changementPrimeRepository.saveAll(aCreer);
             String details = "Exemples : " + String.join(" | ", exemples)
-                + (nbChangements > exemples.size()
-                    ? String.format(" … et %d autre(s).", nbChangements - exemples.size()) : ".");
+                + (aCreer.size() > exemples.size()
+                    ? String.format(" … et %d autre(s).", aCreer.size() - exemples.size()) : ".");
             notificationService.creerNotificationChangementPrimeImport(
-                annee, mois, nbChangements, details, importePar);
+                annee, mois, aCreer.size(), details, importePar);
         }
 
-        log.info("Détection prime import {}/{} : {} changement(s) sur {} clients analysés",
-            mois, annee, nbChangements, stocksCourants.size());
+        log.info("Détection prime {}/{} : {} changement(s) persistés (EN_ATTENTE)", mois, annee, aCreer.size());
     }
 
     private String nvl(Object o) {
@@ -498,7 +557,8 @@ public class ImportService {
                 stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
                 souscriptionRepository.deleteByImportFichierId(importId);
                 importFichierRepository.deleteDirectById(importId);
-                log.info("Import {}/{} supprimé (id={})", mois, annee, importId);
+                int orphelins = clientRepository.deleteOrphanClients();
+                log.info("Import {}/{} supprimé (id={}) — {} client(s) orphelin(s) supprimé(s)", mois, annee, importId, orphelins);
                 return null;
             });
         } catch (Exception e) {
@@ -518,53 +578,245 @@ public class ImportService {
         return importFichierRepository.countByStatut(StatutImport.EN_COURS);
     }
 
-    /**
-     * Relit la comparaison stock importé vs souscription pour un mois donné
-     * et retourne la liste complète des clients avec écart de prime.
-     */
+    @org.springframework.transaction.annotation.Transactional
+    public int purgerClientsOrphelins() {
+        return clientRepository.deleteOrphanClients();
+    }
+
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<ChangementPrimeDto> getChangementsPrime(int annee, int mois) {
-        List<StockMensuel> stocks = stockMensuelRepository.findByAnneeAndMoisWithClient(annee, mois);
-        if (stocks.isEmpty()) return List.of();
+        return changementPrimeRepository.findByAnneeAndMoisWithClient(annee, mois)
+            .stream().map(this::toChangementDto).collect(Collectors.toList());
+    }
 
-        List<Long> clientIds = stocks.stream()
-            .map(s -> s.getClient().getId())
-            .distinct()
-            .collect(Collectors.toList());
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<ChangementPrimeDto> getChangementsEnAttente() {
+        return changementPrimeRepository.findByStatutWithClient(StatutChangement.EN_ATTENTE)
+            .stream().map(this::toChangementDto).collect(Collectors.toList());
+    }
 
-        Map<Long, Souscription> souscriptionParClient = new HashMap<>();
-        int batchSize = 1000;
-        for (int i = 0; i < clientIds.size(); i += batchSize) {
-            List<Long> batch = clientIds.subList(i, Math.min(i + batchSize, clientIds.size()));
-            souscriptionRepository.findAllByClientIdsOrderByDateDesc(batch)
-                .forEach(s -> souscriptionParClient.putIfAbsent(s.getClient().getId(), s));
+    @org.springframework.transaction.annotation.Transactional
+    public void approuverChangement(Long id, String username) {
+        ChangementPrime c = changementPrimeRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Changement introuvable : " + id));
+        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
+
+        List<Souscription> sousc = souscriptionRepository.findByClientIdOrderByDatSouscriptionAsc(c.getClient().getId());
+        if (!sousc.isEmpty()) {
+            Souscription derniere = sousc.get(sousc.size() - 1);
+            derniere.setSecuricompte(c.getSecuricompteApres());
+            derniere.setCommissions(c.getCommissionsApres());
+            souscriptionRepository.save(derniere);
         }
 
-        List<ChangementPrimeDto> result = new ArrayList<>();
-        for (StockMensuel stock : stocks) {
-            Souscription souscription = souscriptionParClient.get(stock.getClient().getId());
-            if (souscription == null) continue;
+        c.setStatut(StatutChangement.APPROUVE);
+        c.setDateDecision(java.time.LocalDateTime.now());
+        c.setDecidePar(username);
+        changementPrimeRepository.save(c);
+        log.info("Changement prime {} approuvé par {}", id, username);
+    }
 
-            String scAvant   = nvl(souscription.getSecuricompte());
-            String scApres   = nvl(stock.getSecuricompte());
-            String commAvant = nvl(souscription.getCommissions());
-            String commApres = nvl(stock.getCommissions());
+    @org.springframework.transaction.annotation.Transactional
+    public void refuserChangement(Long id, String username) {
+        ChangementPrime c = changementPrimeRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Changement introuvable : " + id));
+        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
 
-            if (!scAvant.equals(scApres) || !commAvant.equals(commApres)) {
-                result.add(ChangementPrimeDto.builder()
-                    .clientId(stock.getClient().getId())
-                    .numeroClient(stock.getClient().getNumeroClient())
-                    .nomClient(stock.getClient().getNom())
-                    .agenceLib(stock.getClient().getAgenceLib())
-                    .gestionnaire(stock.getClient().getGestionnaire())
-                    .dateSouscription(souscription.getDatSouscription())
-                    .securicompteAvant(souscription.getSecuricompte())
-                    .securicompteApres(stock.getSecuricompte())
-                    .commissionsAvant(souscription.getCommissions())
-                    .commissionsApres(stock.getCommissions())
-                    .build());
+        c.setStatut(StatutChangement.REFUSE);
+        c.setDateDecision(java.time.LocalDateTime.now());
+        c.setDecidePar(username);
+        changementPrimeRepository.save(c);
+        log.info("Changement prime {} refusé par {}", id, username);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public int approuverTousChangements(int annee, int mois, String username) {
+        List<ChangementPrime> enAttente = changementPrimeRepository
+            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
+        enAttente.forEach(c -> approuverChangement(c.getId(), username));
+        return enAttente.size();
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public int refuserTousChangements(int annee, int mois, String username) {
+        List<ChangementPrime> enAttente = changementPrimeRepository
+            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        enAttente.forEach(c -> {
+            c.setStatut(StatutChangement.REFUSE);
+            c.setDateDecision(now);
+            c.setDecidePar(username);
+        });
+        changementPrimeRepository.saveAll(enAttente);
+        log.info("{} changements de prime refusés en bloc pour {}/{}", enAttente.size(), mois, annee);
+        return enAttente.size();
+    }
+
+    // ─── Fichiers Excel stockés ───────────────────────────────────────────────
+
+    @Async
+    public void reimporterDepuisBase(Long importId, User user) {
+        ImportFichier imp = importFichierRepository.findById(importId)
+            .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + importId));
+        ImportFichierBytes bytes = importFichierBytesRepository.findById(importId)
+            .orElseThrow(() -> new IllegalArgumentException("Fichier non stocké en base pour l'import : " + importId));
+        log.info("Ré-import depuis base — {}/{} ({})", imp.getMois(), imp.getAnnee(), imp.getNomFichier());
+        importerFichierAsync(bytes.getFichierBytes(), imp.getNomFichier(),
+            "application/octet-stream", imp.getAnnee(), imp.getMois(), user);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Optional<ImportFichierBytes> getFichierBytes(Long importId) {
+        return importFichierBytesRepository.findById(importId);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void supprimerFichierBytes(Long importId) {
+        importFichierBytesRepository.deleteById(importId);
+        log.info("Fichier bytes supprimé pour l'import {}", importId);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Set<Long> getIdsAvecFichier() {
+        return new java.util.HashSet<>(importFichierBytesRepository.findAllIds());
+    }
+
+    // ─── Changements données client ──────────────────────────────────────────
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<ChangementClientDto> getChangementsClient(int annee, int mois) {
+        return changementClientRepository.findByAnneeAndMoisWithClient(annee, mois)
+            .stream().map(this::toChangementClientDto).collect(Collectors.toList());
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void approuverChangementClient(Long id, String username) {
+        ChangementClient c = changementClientRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Changement client introuvable : " + id));
+        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
+        c.setStatut(StatutChangement.APPROUVE);
+        c.setDateDecision(LocalDateTime.now());
+        c.setDecidePar(username);
+        changementClientRepository.save(c);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void refuserChangementClient(Long id, String username) {
+        ChangementClient c = changementClientRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Changement client introuvable : " + id));
+        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
+        revertChampClient(c.getClient(), c.getChamp(), c.getValeurAvant());
+        clientRepository.save(c.getClient());
+        c.setStatut(StatutChangement.REFUSE);
+        c.setDateDecision(LocalDateTime.now());
+        c.setDecidePar(username);
+        changementClientRepository.save(c);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public int approuverTousChangementsClient(int annee, int mois, String username) {
+        List<ChangementClient> enAttente = changementClientRepository
+            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
+        if (enAttente.isEmpty()) return 0;
+        LocalDateTime now = LocalDateTime.now();
+        enAttente.forEach(c -> {
+            c.setStatut(StatutChangement.APPROUVE);
+            c.setDateDecision(now);
+            c.setDecidePar(username);
+        });
+        changementClientRepository.saveAll(enAttente);
+        return enAttente.size();
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public int refuserTousChangementsClient(int annee, int mois, String username) {
+        List<ChangementClient> enAttente = changementClientRepository
+            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
+        if (enAttente.isEmpty()) return 0;
+        // Regrouper les changements par client pour éviter plusieurs saves
+        Map<Long, Client> clientsAMaj = new java.util.LinkedHashMap<>();
+        for (ChangementClient c : enAttente) {
+            Client cl = clientsAMaj.computeIfAbsent(c.getClient().getId(), k -> c.getClient());
+            revertChampClient(cl, c.getChamp(), c.getValeurAvant());
+        }
+        clientRepository.saveAll(clientsAMaj.values());
+        LocalDateTime now = LocalDateTime.now();
+        enAttente.forEach(c -> {
+            c.setStatut(StatutChangement.REFUSE);
+            c.setDateDecision(now);
+            c.setDecidePar(username);
+        });
+        changementClientRepository.saveAll(enAttente);
+        log.info("{} changements client refusés en bloc pour {}/{}", enAttente.size(), mois, annee);
+        return enAttente.size();
+    }
+
+    private void revertChampClient(Client client, String champ, String valeurAvant) {
+        switch (champ) {
+            case "nom"           -> client.setNom(valeurAvant);
+            case "agenceLib"     -> client.setAgenceLib(valeurAvant);
+            case "gestionnaire"  -> client.setGestionnaire(valeurAvant);
+            case "zoneLib"       -> client.setZoneLib(valeurAvant);
+            case "dateNaissance" -> {
+                if (valeurAvant == null) {
+                    client.setDateNaissance(null);
+                } else {
+                    try { client.setDateNaissance(java.time.LocalDate.parse(valeurAvant)); }
+                    catch (Exception ignored) { client.setDateNaissance(null); }
+                }
             }
+            default -> { /* champ inconnu, rien à faire */ }
         }
-        return result;
+    }
+
+    private ChangementClientDto toChangementClientDto(ChangementClient c) {
+        Client cl = c.getClient();
+        String champLabel = switch (c.getChamp()) {
+            case "nom"           -> "Nom";
+            case "agenceLib"     -> "Agence";
+            case "gestionnaire"  -> "Gestionnaire";
+            case "zoneLib"       -> "Zone";
+            case "dateNaissance" -> "Date de naissance";
+            default              -> c.getChamp();
+        };
+        return ChangementClientDto.builder()
+            .id(c.getId())
+            .clientId(cl.getId())
+            .numeroClient(cl.getNumeroClient())
+            .nomClient(cl.getNom())
+            .champ(c.getChamp())
+            .champLabel(champLabel)
+            .valeurAvant(c.getValeurAvant())
+            .valeurApres(c.getValeurApres())
+            .statut(c.getStatut())
+            .dateDetection(c.getDateDetection())
+            .dateDecision(c.getDateDecision())
+            .decidePar(c.getDecidePar())
+            .annee(c.getAnnee())
+            .mois(c.getMois())
+            .build();
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private ChangementPrimeDto toChangementDto(ChangementPrime c) {
+        Client cl = c.getClient();
+        return ChangementPrimeDto.builder()
+            .id(c.getId())
+            .clientId(cl.getId())
+            .numeroClient(cl.getNumeroClient())
+            .nomClient(cl.getNom())
+            .agenceLib(cl.getAgenceLib())
+            .gestionnaire(cl.getGestionnaire())
+            .dateSouscription(c.getDatSouscription())
+            .securicompteAvant(c.getSecuricompteAvant())
+            .securicompteApres(c.getSecuricompteApres())
+            .commissionsAvant(c.getCommissionsAvant())
+            .commissionsApres(c.getCommissionsApres())
+            .statut(c.getStatut())
+            .dateDetection(c.getDateDetection())
+            .dateDecision(c.getDateDecision())
+            .decidePar(c.getDecidePar())
+            .build();
     }
 }

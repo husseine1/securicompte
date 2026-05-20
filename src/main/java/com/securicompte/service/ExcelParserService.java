@@ -26,22 +26,14 @@ import java.util.*;
 @Slf4j
 public class ExcelParserService {
 
-    // Mots-clés de recherche (correspondance partielle insensible à la casse)
-    private static final List<String> SHEETS_NOUVELLE =
-        List.of("nouvelle souscription", "nouvelles souscriptions", "nouvelle", "nv souscription", "nv");
-    private static final List<String> SHEETS_ANCIENNE =
-        List.of("ancienne souscription", "anciennes souscriptions", "ancienne", "anc souscription", "anc");
     private static final List<String> SHEETS_STOCK =
         List.of("stock du mois", "stock mois", "stock mensuel", "stock");
 
-    public record ExcelData(
-        List<Map<String, Object>> nouvelles,
-        List<Map<String, Object>> anciennes,
-        List<Map<String, Object>> stock
-    ) {}
+    public record ExcelData(List<Map<String, Object>> stock) {}
 
     /**
-     * Parse le fichier Excel et retourne les données des 3 feuilles.
+     * Parse le fichier Excel — seule la feuille "Stock du mois" est utilisée.
+     * Le type NOUVELLE/ANCIENNE est déduit de la date de souscription dans ImportService.
      */
     public ExcelData parseExcel(MultipartFile file) throws IOException {
         String filename = file.getOriginalFilename();
@@ -49,28 +41,17 @@ public class ExcelParserService {
             return parseXlsb(file);
         }
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
-            Sheet sheetNouvelle = findSheet(workbook, SHEETS_NOUVELLE);
-            Sheet sheetAncienne = findSheet(workbook, SHEETS_ANCIENNE);
-            Sheet sheetStock    = findSheet(workbook, SHEETS_STOCK);
+            Sheet sheetStock = findSheet(workbook, SHEETS_STOCK);
 
             List<String> sheetsFound = new ArrayList<>();
             for (int i = 0; i < workbook.getNumberOfSheets(); i++) sheetsFound.add(workbook.getSheetName(i));
 
-            if (sheetNouvelle == null)
-                throw new IllegalArgumentException("Feuille 'Nouvelle souscription' introuvable. Feuilles présentes : " + sheetsFound);
-            if (sheetAncienne == null)
-                throw new IllegalArgumentException("Feuille 'Ancienne souscription' introuvable. Feuilles présentes : " + sheetsFound);
             if (sheetStock == null)
                 throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable. Feuilles présentes : " + sheetsFound);
 
-            List<Map<String, Object>> nouvelles = parseSheet(sheetNouvelle, false);
-            List<Map<String, Object>> anciennes = parseSheet(sheetAncienne, false);
-            List<Map<String, Object>> stock     = parseSheet(sheetStock, true);
-
-            log.info("Parsing Excel OK — Nouvelles: {}, Anciennes: {}, Stock: {}",
-                nouvelles.size(), anciennes.size(), stock.size());
-
-            return new ExcelData(nouvelles, anciennes, stock);
+            List<Map<String, Object>> stock = parseSheet(sheetStock, true);
+            log.info("Parsing Excel OK — Stock: {}", stock.size());
+            return new ExcelData(stock);
         }
     }
 
@@ -114,20 +95,13 @@ public class ExcelParserService {
             throw new IOException("Fichier .xlsb invalide ou corrompu", e);
         }
 
-        List<Map<String, Object>> nouvelles = findSheetRows(sheetsData, SHEETS_NOUVELLE);
-        List<Map<String, Object>> anciennes = findSheetRows(sheetsData, SHEETS_ANCIENNE);
-        List<Map<String, Object>> stock     = findSheetRows(sheetsData, SHEETS_STOCK);
+        List<Map<String, Object>> stock = findSheetRows(sheetsData, SHEETS_STOCK);
 
-        if (nouvelles == null)
-            throw new IllegalArgumentException("Feuille 'Nouvelle souscription' introuvable dans le fichier.");
-        if (anciennes == null)
-            throw new IllegalArgumentException("Feuille 'Ancienne souscription' introuvable dans le fichier.");
         if (stock == null)
             throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable dans le fichier.");
 
-        log.info("Parsing XLSB OK — Nouvelles: {}, Anciennes: {}, Stock: {}",
-            nouvelles.size(), anciennes.size(), stock.size());
-        return new ExcelData(nouvelles, anciennes, stock);
+        log.info("Parsing XLSB OK — Stock: {}", stock.size());
+        return new ExcelData(stock);
     }
 
     private List<Map<String, Object>> findSheetRows(Map<String, List<Map<String, Object>>> data, List<String> keywords) {
@@ -149,10 +123,10 @@ public class ExcelParserService {
         private final boolean allowNomFallback;
         private final List<Map<String, Object>> rows = new ArrayList<>();
         private final List<String> headers = new ArrayList<>();
-        // En-têtes tentatives pour la ligne courante (avant de confirmer que c'est la ligne d'en-tête)
         private final List<String> pendingHeaders = new ArrayList<>();
         private Map<String, Object> currentRow;
         private boolean headerFound = false;
+        private boolean done = false;
         private boolean currentRowHasClientCol = false;
         private boolean currentRowHasNomCol = false;
 
@@ -161,6 +135,7 @@ public class ExcelParserService {
 
         @Override
         public void startRow(int rowNum) {
+            if (done) return;
             currentRow = new LinkedHashMap<>();
             pendingHeaders.clear();
             currentRowHasClientCol = false;
@@ -169,22 +144,23 @@ public class ExcelParserService {
 
         @Override
         public void endRow(int rowNum) {
+            if (done) { currentRow = null; return; }
             if (!headerFound) {
                 if (currentRowHasClientCol || (allowNomFallback && currentRowHasNomCol)) {
-                    // Normaliser COMPTE → CLIENT si CLIENT absent (certains fichiers utilisent COMPTE comme identifiant)
                     if (!pendingHeaders.contains("CLIENT") && pendingHeaders.contains("COMPTE")) {
                         pendingHeaders.set(pendingHeaders.indexOf("COMPTE"), "CLIENT");
                     }
                     headers.addAll(pendingHeaders);
                     headerFound = true;
                 }
-                // Sinon c'est une ligne de titre/métadonnée, on l'ignore
             } else if (currentRow != null) {
                 Object clientVal = currentRow.get("CLIENT");
                 Object nomVal    = currentRow.get("NOM");
-                if ((clientVal != null && !clientVal.toString().isBlank()) ||
-                    (allowNomFallback && nomVal != null && !nomVal.toString().isBlank())) {
+                if (clientVal != null && !clientVal.toString().isBlank()) {
                     rows.add(currentRow);
+                } else if (allowNomFallback && nomVal != null && !nomVal.toString().isBlank()) {
+                    // NOM présent mais pas de CLIENT → ligne de total → fin du stock
+                    done = true;
                 }
             }
             currentRow = null;
@@ -253,9 +229,11 @@ public class ExcelParserService {
 
             Object clientVal = rowData.get("CLIENT");
             Object nomVal    = rowData.get("NOM");
-            if ((clientVal != null && !clientVal.toString().isBlank()) ||
-                (allowNomFallback && nomVal != null && !nomVal.toString().isBlank())) {
+            if (clientVal != null && !clientVal.toString().isBlank()) {
                 rows.add(rowData);
+            } else if (allowNomFallback && nomVal != null && !nomVal.toString().isBlank()) {
+                // NOM présent mais pas de CLIENT → ligne de total → fin du stock
+                break;
             }
         }
         return rows;
@@ -286,7 +264,7 @@ public class ExcelParserService {
         }
         return Souscription.builder()
             .client(client)
-            .securicompte(getString(row, "SECURICOMPTE"))
+            .securicompte(getSecuricompte(row))
             .commissions(getDecimal(row, "COMMISSIONS"))
             .libelPackage(getString(row, "LIBELL_PACKAGE"))
             .optionSecuricompte(getString(row, "OPTION SECURICOMPTE"))
@@ -303,7 +281,7 @@ public class ExcelParserService {
             .client(client)
             .annee(annee)
             .mois(mois)
-            .securicompte(getString(row, "SECURICOMPTE"))
+            .securicompte(getSecuricompte(row))
             .commissions(getDecimal(row, "COMMISSIONS"))
             .libelPackage(getString(row, "LIBELL_PACKAGE"))
             .optionSecuricompte(getString(row, "OPTION SECURICOMPTE"))
@@ -342,52 +320,167 @@ public class ExcelParserService {
         return num == null || num.isBlank() ? null : num;
     }
 
-    private LocalDate getDate(Map<String, Object> row, String key) {
+    public LocalDate getDate(Map<String, Object> row, String key) {
         Object val = row.get(key.toUpperCase());
         if (val instanceof LocalDate ld) return ld;
+        // Numéro de série Excel stocké comme Number (ex: cellule non formatée date)
+        if (val instanceof Number n) {
+            double d = n.doubleValue();
+            if (d > 1000) {
+                try { return DateUtil.getLocalDateTime(d).toLocalDate(); } catch (Exception ignored) {}
+            }
+        }
         if (val instanceof String s && !s.isBlank()) {
-            try {
-                String[] parts = s.trim().split("/");
-                if (parts.length == 3) {
+            s = s.trim();
+            // dd/MM/yyyy ou dd/MM/yy
+            String[] parts = s.split("/");
+            if (parts.length == 3) {
+                try {
                     int year = Integer.parseInt(parts[2]);
-                    if (year < 100) year += 2000; // 25 → 2025, 18 → 2018
+                    if (year < 100) year += 2000;
                     return LocalDate.of(year, Integer.parseInt(parts[1]), Integer.parseInt(parts[0]));
-                }
-                return LocalDate.parse(s.trim());
+                } catch (Exception ignored) {}
+            }
+            // ISO yyyy-MM-dd
+            try { return LocalDate.parse(s); } catch (Exception ignored) {}
+            // Numéro de série Excel comme chaîne (ex: "44806")
+            try {
+                double serial = Double.parseDouble(s);
+                if (serial > 1000) return DateUtil.getLocalDateTime(serial).toLocalDate();
             } catch (Exception ignored) {}
         }
         return null;
     }
 
+    /**
+     * Normalise la valeur de la colonne SECURICOMPTE :
+     * - Supprime les espaces superflus et met en majuscules
+     * - Corrige l'artefact Excel des entiers flottants : "365.0" → "365"
+     * - Normalise les variantes booléennes (OUI/O/1/YES → "OUI", NON/N/0/NO → "NON")
+     */
+    public String getSecuricompte(Map<String, Object> row) {
+        Object val = row.get("SECURICOMPTE");
+        if (val == null) return null;
+
+        // Excel stocke parfois les entiers comme doubles : 365.0, 730.0…
+        if (val instanceof Number n) {
+            double d = n.doubleValue();
+            if (d == Math.floor(d) && !Double.isInfinite(d)) {
+                return String.valueOf((long) d);
+            }
+            return String.valueOf(d);
+        }
+
+        String s = val.toString().trim().toUpperCase();
+        if (s.isEmpty()) return null;
+
+        // Artefact float texte : "365.0" → "365"
+        if (s.matches("^\\d+\\.0+$")) {
+            s = s.substring(0, s.indexOf('.'));
+        }
+
+        // Normalisation booléenne
+        return switch (s) {
+            case "OUI", "O", "1", "YES", "TRUE", "VRAI" -> "OUI";
+            case "NON", "N", "0", "NO", "FALSE", "FAUX" -> "NON";
+            default -> s;
+        };
+    }
+
+    /**
+     * Parse une valeur numérique en gérant tous les formats monétaires courants :
+     * - Séparateurs de milliers : espace, espace insécable (NBSP), point
+     * - Séparateur décimal : virgule ou point
+     * - Suffixes monétaires : FCFA, F, XOF, CFA, etc.
+     * Exemples : "1 234,56" → 1234.56 | "1.234,56" → 1234.56 | "54,75" → 54.75
+     */
     private BigDecimal getDecimal(Map<String, Object> row, String key) {
         Object val = row.get(key.toUpperCase());
         if (val == null) return null;
         try {
-            if (val instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
-            String s = val.toString().replace(",", ".").trim();
+            if (val instanceof Number n) {
+                double d = n.doubleValue();
+                return (d == 0) ? BigDecimal.ZERO : BigDecimal.valueOf(d);
+            }
+            String s = val.toString().trim();
+            if (s.isEmpty() || s.equals("-") || s.equalsIgnoreCase("N/A")) return null;
+
+            // Supprimer les suffixes monétaires (lettres en fin de chaîne)
+            s = s.replaceAll("(?i)[A-Z]+\\s*$", "").trim();
+            // Supprimer espaces et espaces insécables (séparateurs de milliers)
+            s = s.replace(" ", "").replace(" ", "");
+
+            if (s.isEmpty()) return null;
+
+            // Virgule ET point : format européen "1.234,56" → point = milliers, virgule = décimal
+            if (s.contains(",") && s.contains(".")) {
+                int lastComma = s.lastIndexOf(',');
+                int lastDot   = s.lastIndexOf('.');
+                if (lastComma > lastDot) {
+                    // "1.234,56" : virgule est le décimal
+                    s = s.replace(".", "").replace(",", ".");
+                } else {
+                    // "1,234.56" : point est le décimal
+                    s = s.replace(",", "");
+                }
+            } else {
+                // Seulement virgule : format français "1234,56"
+                s = s.replace(",", ".");
+            }
+
             return s.isEmpty() ? null : new BigDecimal(s);
-        } catch (Exception e) { return null; }
+        } catch (Exception e) {
+            log.debug("Impossible de parser la valeur décimale '{}' pour la clé '{}'", val, key);
+            return null;
+        }
     }
+
+    private final DataFormatter dataFormatter = new DataFormatter();
 
     private Object parseCellValue(Cell cell) {
         if (cell == null) return null;
-        return switch (cell.getCellType()) {
-            case STRING  -> cell.getStringCellValue().trim();
-            case NUMERIC -> {
-                if (DateUtil.isCellDateFormatted(cell)) {
-                    yield cell.getLocalDateTimeCellValue().toLocalDate();
+        CellType effectiveType = cell.getCellType() == CellType.FORMULA
+            ? cell.getCachedFormulaResultType()
+            : cell.getCellType();
+        // Cellule numérique formatée date → LocalDate directement
+        if (effectiveType == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+            return cell.getLocalDateTimeCellValue().toLocalDate();
+        }
+        String formatted = dataFormatter.formatCellValue(cell).trim();
+        if (formatted.isEmpty()) return null;
+        // Texte qui ressemble à une date → on normalise en LocalDate
+        LocalDate parsedDate = tryParseDate(formatted);
+        return parsedDate != null ? parsedDate : formatted;
+    }
+
+    /** Tente de parser une chaîne en LocalDate selon les formats courants des fichiers Excel. */
+    private LocalDate tryParseDate(String s) {
+        // dd/MM/yyyy ou dd/MM/yy
+        String[] parts = s.split("[/\\-\\.]");
+        if (parts.length == 3) {
+            try {
+                int p0 = Integer.parseInt(parts[0].trim());
+                int p1 = Integer.parseInt(parts[1].trim());
+                int p2 = Integer.parseInt(parts[2].trim());
+                // jj/mm/aaaa ou jj/mm/aa (jour ≤ 31, mois ≤ 12)
+                if (p0 >= 1 && p0 <= 31 && p1 >= 1 && p1 <= 12) {
+                    int year = p2 < 100 ? p2 + 2000 : p2;
+                    return LocalDate.of(year, p1, p0);
                 }
-                double d = cell.getNumericCellValue();
-                yield (d == Math.floor(d) && !Double.isInfinite(d))
-                    ? String.valueOf((long) d) : String.valueOf(d);
+                // aaaa/mm/jj (ISO avec séparateurs variés)
+                if (p0 > 31 && p1 >= 1 && p1 <= 12 && p2 >= 1 && p2 <= 31) {
+                    return LocalDate.of(p0, p1, p2);
+                }
+            } catch (Exception ignored) {}
+        }
+        // Numéro de série Excel en texte (ex: "45474")
+        try {
+            double serial = Double.parseDouble(s);
+            if (serial > 1000 && serial < 100000) {
+                return DateUtil.getLocalDateTime(serial).toLocalDate();
             }
-            case BOOLEAN -> cell.getBooleanCellValue();
-            case FORMULA -> {
-                try { yield cell.getStringCellValue(); }
-                catch (Exception e) { yield cell.getNumericCellValue(); }
-            }
-            default -> null;
-        };
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private String getCellStringValue(Cell cell) {

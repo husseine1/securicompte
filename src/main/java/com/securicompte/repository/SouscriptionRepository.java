@@ -17,8 +17,8 @@ public interface SouscriptionRepository extends JpaRepository<Souscription, Long
     boolean existsByClientIdAndDatSouscriptionAndTypeSouscription(
         Long clientId, LocalDate datSouscription, TypeSouscription type);
 
-    @Query("SELECT CONCAT(CAST(s.client.id AS string), '_', CAST(s.datSouscription AS string), '_', s.typeSouscription) FROM Souscription s WHERE s.typeSouscription = :type AND s.client.id IN :clientIds")
-    List<String> findExistingKeysForClients(@Param("type") TypeSouscription type, @Param("clientIds") java.util.Collection<Long> clientIds);
+    @Query("SELECT CONCAT(CAST(s.client.id AS string), '_', CAST(s.datSouscription AS string), '_', s.typeSouscription) FROM Souscription s WHERE s.client.id IN :clientIds")
+    List<String> findExistingKeysForClients(@Param("clientIds") java.util.Collection<Long> clientIds);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM Souscription s WHERE s.importFichier.id = :importFichierId")

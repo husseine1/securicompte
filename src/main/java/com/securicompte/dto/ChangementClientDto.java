@@ -4,26 +4,23 @@ import com.securicompte.enums.StatutChangement;
 import lombok.Builder;
 import lombok.Data;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
 @Builder
-public class ChangementPrimeDto {
+public class ChangementClientDto {
     private Long id;
     private Long clientId;
     private String numeroClient;
     private String nomClient;
-    private String agenceLib;
-    private String gestionnaire;
-    private LocalDate dateSouscription;
-    private String securicompteAvant;
-    private String securicompteApres;
-    private BigDecimal commissionsAvant;
-    private BigDecimal commissionsApres;
+    private String champ;
+    private String champLabel;
+    private String valeurAvant;
+    private String valeurApres;
     private StatutChangement statut;
     private LocalDateTime dateDetection;
     private LocalDateTime dateDecision;
     private String decidePar;
+    private Integer annee;
+    private Integer mois;
 }

@@ -4,6 +4,7 @@ import com.securicompte.entity.Client;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -49,4 +50,13 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     @Query("SELECT c.id FROM Client c WHERE c.dateSinistre IS NOT NULL AND c.dateSinistre <= :date")
     List<Long> findClientIdsWithSinistreInOrBefore(@Param("date") LocalDate date);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        DELETE FROM Client c
+        WHERE NOT EXISTS (SELECT 1 FROM Souscription s WHERE s.client = c)
+          AND NOT EXISTS (SELECT 1 FROM StockMensuel sm WHERE sm.client = c)
+          AND NOT EXISTS (SELECT 1 FROM Impaye i WHERE i.client = c)
+        """)
+    int deleteOrphanClients();
 }

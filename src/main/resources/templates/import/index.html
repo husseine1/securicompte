@@ -151,16 +151,55 @@
                 <td style="font-size:12px"
                     th:text="${imp.dateImport != null ? #temporals.format(imp.dateImport,'dd/MM/yyyy HH:mm') : '-'}"></td>
                 <td>
-                  <div class="d-flex gap-1">
+                  <div class="d-flex gap-1 flex-wrap">
                     <a th:href="@{/import/{id}(id=${imp.id})}"
                        class="btn btn-sm btn-outline-primary py-0 px-2" title="Voir le détail">
                       <i class="fas fa-eye"></i>
                     </a>
+                    <!-- Changements de prime -->
+                    <a th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
+                       th:href="@{/import/{a}/{m}/changements-prime(a=${imp.annee},m=${imp.mois})}"
+                       class="btn btn-sm btn-outline-warning py-0 px-2" title="Changements de prime">
+                      <i class="fas fa-exchange-alt"></i>
+                    </a>
+                    <!-- Changements données client -->
+                    <a th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
+                       th:href="@{/import/{a}/{m}/changements-client(a=${imp.annee},m=${imp.mois})}"
+                       class="btn btn-sm btn-outline-info py-0 px-2" title="Changements données client">
+                      <i class="fas fa-user-edit"></i>
+                    </a>
+                    <!-- Ré-importer depuis le fichier stocké -->
+                    <form th:if="${importsAvecFichier.contains(imp.id)}"
+                          th:action="@{/import/{id}/reimporter(id=${imp.id})}" method="post" class="d-inline"
+                          sec:authorize="hasRole('ROLE_ADMIN')"
+                          onsubmit="return confirm('Ré-importer ce mois depuis le fichier stocké ?')">
+                      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                      <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2" title="Ré-importer">
+                        <i class="fas fa-redo"></i>
+                      </button>
+                    </form>
+                    <!-- Télécharger le fichier Excel stocké -->
+                    <a th:if="${importsAvecFichier.contains(imp.id)}"
+                       th:href="@{/import/{id}/fichier(id=${imp.id})}"
+                       class="btn btn-sm btn-outline-success py-0 px-2" title="Télécharger le fichier Excel">
+                      <i class="fas fa-file-excel"></i>
+                    </a>
+                    <!-- Supprimer uniquement le fichier stocké -->
+                    <form th:if="${importsAvecFichier.contains(imp.id)}"
+                          th:action="@{/import/{id}/supprimer-fichier(id=${imp.id})}" method="post" class="d-inline"
+                          sec:authorize="hasRole('ROLE_ADMIN')"
+                          onsubmit="return confirm('Supprimer le fichier Excel de la base de données ? (les données importées seront conservées)')">
+                      <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                      <button type="submit" class="btn btn-sm btn-outline-warning py-0 px-2" title="Supprimer le fichier stocké">
+                        <i class="fas fa-file-times"></i>
+                      </button>
+                    </form>
+                    <!-- Supprimer l'import complet -->
                     <form th:action="@{/import/{id}/supprimer(id=${imp.id})}" method="post" class="d-inline"
                           sec:authorize="hasRole('ROLE_ADMIN')"
                           onsubmit="return confirm('Supprimer cet import et toutes ses données ?')">
                       <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-                      <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer">
+                      <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer l\'import">
                         <i class="fas fa-trash"></i>
                       </button>
                     </form>

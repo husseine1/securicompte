@@ -1,11 +1,16 @@
 package com.securicompte.controller;
 
+import com.securicompte.dto.ChangementClientDto;
 import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
+import com.securicompte.entity.ImportFichierBytes;
 import com.securicompte.entity.User;
 import com.securicompte.service.ImportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
@@ -32,6 +37,7 @@ public class ImportController {
                              @RequestParam(required = false) Boolean done,
                              @RequestParam(required = false) Boolean supprime) {
         model.addAttribute("imports", importService.getTousLesImports());
+        model.addAttribute("importsAvecFichier", importService.getIdsAvecFichier());
         model.addAttribute("anneeCourante", LocalDate.now().getYear());
         model.addAttribute("moisCourant", LocalDate.now().getMonthValue());
         if (Boolean.TRUE.equals(done))
@@ -113,14 +119,143 @@ public class ImportController {
         return "redirect:/import";
     }
 
-    /** Détail des clients avec changement de prime pour un mois donné. */
+    /** Purge les clients sans aucune donnée (utile après suppression d'imports). */
+    @PostMapping("/purger-clients-orphelins")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseBody
+    public Map<String, Object> purgerClientsOrphelins() {
+        int nb = importService.purgerClientsOrphelins();
+        log.info("Purge clients orphelins : {} client(s) supprimé(s)", nb);
+        return Map.of("nbSupprimes", nb);
+    }
+
+    // ─── Fichiers Excel ───────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/fichier")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    public ResponseEntity<byte[]> telechargerFichier(@PathVariable Long id) {
+        return importService.getFichierBytes(id)
+            .map(f -> ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename=\"" + importService.getImportById(id).getNomFichier() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(f.getFichierBytes()))
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/{id}/reimporter")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String reimporter(@PathVariable Long id,
+                              @AuthenticationPrincipal User user,
+                              RedirectAttributes ra) {
+        try {
+            importService.reimporterDepuisBase(id, user);
+            ra.addFlashAttribute("succes", "Ré-import lancé en arrière-plan.");
+        } catch (Exception e) {
+            ra.addFlashAttribute("erreur", "Erreur ré-import : " + e.getMessage());
+        }
+        return "redirect:/import";
+    }
+
+    @PostMapping("/{id}/supprimer-fichier")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String supprimerFichier(@PathVariable Long id, RedirectAttributes ra) {
+        importService.supprimerFichierBytes(id);
+        ra.addFlashAttribute("succes", "Fichier supprimé de la base de données.");
+        return "redirect:/import";
+    }
+
+    // ─── Changements de prime ─────────────────────────────────────────────────
+
     @GetMapping("/{annee}/{mois}/changements-prime")
     @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
     public String changementsPrime(@PathVariable int annee, @PathVariable int mois, Model model) {
-        List<ChangementPrimeDto> changements = importService.getChangementsPrime(annee, mois);
-        model.addAttribute("changements", changements);
+        model.addAttribute("changements", importService.getChangementsPrime(annee, mois));
         model.addAttribute("annee", annee);
         model.addAttribute("mois", mois);
         return "notifications/changements-prime";
+    }
+
+    @PostMapping("/changements/{id}/approuver")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseBody
+    public Map<String, Object> approuverChangement(@PathVariable Long id,
+                                                    @AuthenticationPrincipal User user) {
+        importService.approuverChangement(id, user.getUsername());
+        return Map.of("statut", "APPROUVE");
+    }
+
+    @PostMapping("/changements/{id}/refuser")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseBody
+    public Map<String, Object> refuserChangement(@PathVariable Long id,
+                                                  @AuthenticationPrincipal User user) {
+        importService.refuserChangement(id, user.getUsername());
+        return Map.of("statut", "REFUSE");
+    }
+
+    @PostMapping("/{annee}/{mois}/changements-prime/approuver-tous")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String approuverTous(@PathVariable int annee, @PathVariable int mois,
+                                 @AuthenticationPrincipal User user, RedirectAttributes ra) {
+        int nb = importService.approuverTousChangements(annee, mois, user.getUsername());
+        ra.addFlashAttribute("succes", nb + " changement(s) approuvé(s).");
+        return "redirect:/import/" + annee + "/" + mois + "/changements-prime";
+    }
+
+    @PostMapping("/{annee}/{mois}/changements-prime/refuser-tous")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String refuserTous(@PathVariable int annee, @PathVariable int mois,
+                               @AuthenticationPrincipal User user, RedirectAttributes ra) {
+        int nb = importService.refuserTousChangements(annee, mois, user.getUsername());
+        ra.addFlashAttribute("succes", nb + " changement(s) refusé(s).");
+        return "redirect:/import/" + annee + "/" + mois + "/changements-prime";
+    }
+
+    // ─── Changements données client ───────────────────────────────────────────
+
+    @GetMapping("/{annee}/{mois}/changements-client")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    public String changementsClient(@PathVariable int annee, @PathVariable int mois, Model model) {
+        model.addAttribute("changements", importService.getChangementsClient(annee, mois));
+        model.addAttribute("annee", annee);
+        model.addAttribute("mois", mois);
+        return "notifications/changements-client";
+    }
+
+    @PostMapping("/changements-client/{id}/approuver")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseBody
+    public Map<String, Object> approuverChangementClient(@PathVariable Long id,
+                                                          @AuthenticationPrincipal User user) {
+        importService.approuverChangementClient(id, user.getUsername());
+        return Map.of("statut", "APPROUVE");
+    }
+
+    @PostMapping("/changements-client/{id}/refuser")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseBody
+    public Map<String, Object> refuserChangementClient(@PathVariable Long id,
+                                                        @AuthenticationPrincipal User user) {
+        importService.refuserChangementClient(id, user.getUsername());
+        return Map.of("statut", "REFUSE");
+    }
+
+    @PostMapping("/{annee}/{mois}/changements-client/approuver-tous")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String approuverTousClient(@PathVariable int annee, @PathVariable int mois,
+                                       @AuthenticationPrincipal User user, RedirectAttributes ra) {
+        int nb = importService.approuverTousChangementsClient(annee, mois, user.getUsername());
+        ra.addFlashAttribute("succes", nb + " changement(s) approuvé(s).");
+        return "redirect:/import/" + annee + "/" + mois + "/changements-client";
+    }
+
+    @PostMapping("/{annee}/{mois}/changements-client/refuser-tous")
+    @PreAuthorize("hasRole('ADMIN')")
+    public String refuserTousClient(@PathVariable int annee, @PathVariable int mois,
+                                     @AuthenticationPrincipal User user, RedirectAttributes ra) {
+        int nb = importService.refuserTousChangementsClient(annee, mois, user.getUsername());
+        ra.addFlashAttribute("succes", nb + " changement(s) refusé(s).");
+        return "redirect:/import/" + annee + "/" + mois + "/changements-client";
     }
 }
