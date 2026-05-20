@@ -17,6 +17,9 @@ public interface ChangementClientRepository extends JpaRepository<ChangementClie
 
     long countByAnneeAndMois(int annee, int mois);
 
+    @Query("SELECT c.annee, c.mois, COUNT(c) FROM ChangementClient c GROUP BY c.annee, c.mois")
+    List<Object[]> countGroupedByMois();
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM ChangementClient c WHERE c.annee = :annee AND c.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") int annee, @Param("mois") int mois);

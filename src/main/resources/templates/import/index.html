@@ -157,17 +157,29 @@
                       <i class="fas fa-eye"></i>
                     </a>
                     <!-- Changements de prime -->
-                    <a th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
-                       th:href="@{/import/{a}/{m}/changements-prime(a=${imp.annee},m=${imp.mois})}"
-                       class="btn btn-sm btn-outline-warning py-0 px-2" title="Changements de prime">
-                      <i class="fas fa-exchange-alt"></i>
-                    </a>
+                    <th:block th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
+                              th:with="k=|${imp.annee}-${imp.mois}|">
+                      <a th:href="@{/import/{a}/{m}/changements-prime(a=${imp.annee},m=${imp.mois})}"
+                         class="btn btn-sm btn-outline-warning py-0 px-2 position-relative" title="Changements de prime">
+                        <i class="fas fa-exchange-alt"></i>
+                        <span th:if="${nbPrimeEnAttente.containsKey(k) and nbPrimeEnAttente.get(k) > 0}"
+                              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                              style="font-size:9px;min-width:16px"
+                              th:text="${nbPrimeEnAttente.get(k)}"></span>
+                      </a>
+                    </th:block>
                     <!-- Changements données client -->
-                    <a th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
-                       th:href="@{/import/{a}/{m}/changements-client(a=${imp.annee},m=${imp.mois})}"
-                       class="btn btn-sm btn-outline-info py-0 px-2" title="Changements données client">
-                      <i class="fas fa-user-edit"></i>
-                    </a>
+                    <th:block th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
+                              th:with="k=|${imp.annee}-${imp.mois}|">
+                      <a th:href="@{/import/{a}/{m}/changements-client(a=${imp.annee},m=${imp.mois})}"
+                         class="btn btn-sm btn-outline-info py-0 px-2 position-relative" title="Changements données client">
+                        <i class="fas fa-user-edit"></i>
+                        <span th:if="${nbChangementsClient.containsKey(k) and nbChangementsClient.get(k) > 0}"
+                              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary"
+                              style="font-size:9px;min-width:16px"
+                              th:text="${nbChangementsClient.get(k)}"></span>
+                      </a>
+                    </th:block>
                     <!-- Ré-importer depuis le fichier stocké -->
                     <form th:if="${importsAvecFichier.contains(imp.id)}"
                           th:action="@{/import/{id}/reimporter(id=${imp.id})}" method="post" class="d-inline"

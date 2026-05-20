@@ -570,6 +570,8 @@ public class ImportService {
                 impayeRepository.deleteByAnneeAndMois(annee, mois);
                 stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
                 souscriptionRepository.deleteByImportFichierId(importId);
+                changementPrimeRepository.deleteByAnneeAndMois(annee, mois);
+                changementClientRepository.deleteByAnneeAndMois(annee, mois);
                 importFichierRepository.deleteDirectById(importId);
                 int orphelins = clientRepository.deleteOrphanClients();
                 log.info("Import {}/{} supprimé (id={}) — {} client(s) orphelin(s) supprimé(s)", mois, annee, importId, orphelins);
@@ -590,6 +592,22 @@ public class ImportService {
 
     public long countImportsEnCours() {
         return importFichierRepository.countByStatut(StatutImport.EN_COURS);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Map<String, Long> getNbPrimeEnAttenteParMois() {
+        java.util.Map<String, Long> map = new java.util.HashMap<>();
+        changementPrimeRepository.countByStatutGroupedByMois(StatutChangement.EN_ATTENTE)
+            .forEach(r -> map.put(r[0] + "-" + r[1], (Long) r[2]));
+        return map;
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.Map<String, Long> getNbChangementsClientParMois() {
+        java.util.Map<String, Long> map = new java.util.HashMap<>();
+        changementClientRepository.countGroupedByMois()
+            .forEach(r -> map.put(r[0] + "-" + r[1], (Long) r[2]));
+        return map;
     }
 
     @org.springframework.transaction.annotation.Transactional

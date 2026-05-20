@@ -24,6 +24,9 @@ public interface ChangementPrimeRepository extends JpaRepository<ChangementPrime
 
     long countByAnneeAndMoisAndStatut(int annee, int mois, StatutChangement statut);
 
+    @Query("SELECT c.annee, c.mois, COUNT(c) FROM ChangementPrime c WHERE c.statut = :statut GROUP BY c.annee, c.mois")
+    List<Object[]> countByStatutGroupedByMois(@Param("statut") StatutChangement statut);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM ChangementPrime c WHERE c.annee = :annee AND c.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") int annee, @Param("mois") int mois);

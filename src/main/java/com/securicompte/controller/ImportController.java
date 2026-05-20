@@ -38,6 +38,8 @@ public class ImportController {
                              @RequestParam(required = false) Boolean supprime) {
         model.addAttribute("imports", importService.getTousLesImports());
         model.addAttribute("importsAvecFichier", importService.getIdsAvecFichier());
+        model.addAttribute("nbPrimeEnAttente", importService.getNbPrimeEnAttenteParMois());
+        model.addAttribute("nbChangementsClient", importService.getNbChangementsClientParMois());
         model.addAttribute("anneeCourante", LocalDate.now().getYear());
         model.addAttribute("moisCourant", LocalDate.now().getMonthValue());
         if (Boolean.TRUE.equals(done))
