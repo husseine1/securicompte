@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Se placer dans le dossier du script (indispensable pour que Maven trouve le pom.xml)
+cd /d "%~dp0"
+
 title Securicompte - Demarrage
 
 echo.
@@ -9,7 +12,7 @@ echo        SECURICOMPTE - Demarrage local
 echo ====================================================
 echo.
 
-REM ─── Java ────────────────────────────────────────────
+REM --- Java ---
 echo [1/5] Verification Java...
 java -version >nul 2>&1
 if errorlevel 1 (
@@ -20,7 +23,7 @@ if errorlevel 1 (
 for /f "tokens=3" %%i in ('java -version 2^>^&1 ^| findstr "version"') do set JAVA_VER=%%i
 echo [OK] Java %JAVA_VER%
 
-REM ─── Maven ───────────────────────────────────────────
+REM --- Maven ---
 echo [2/5] Verification Maven...
 mvn -version >nul 2>&1
 if errorlevel 1 (
@@ -31,7 +34,7 @@ if errorlevel 1 (
 for /f "tokens=3" %%i in ('mvn -version ^| findstr "Apache Maven"') do set MVN_VER=%%i
 echo [OK] Maven %MVN_VER%
 
-REM ─── Chercher psql (PATH ou installation standard) ───
+REM --- Chercher psql (PATH ou installation standard) ---
 echo [3/5] Verification PostgreSQL...
 set PSQL=psql
 psql --version >nul 2>&1
@@ -56,7 +59,7 @@ if errorlevel 1 (
 )
 echo [OK] PostgreSQL actif
 
-REM ─── Creer la base si elle n'existe pas ──────────────
+REM --- Creer la base si elle n'existe pas ---
 "%PSQL%" -h localhost -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='securicompte_db';" 2>nul | findstr /r "^ *1" >nul 2>&1
 if errorlevel 1 (
     echo     Creation de la base securicompte_db...
@@ -66,7 +69,7 @@ if errorlevel 1 (
     echo [OK] Base de donnees existante
 )
 
-REM ─── Port 8080 ───────────────────────────────────────
+REM --- Port 8080 ---
 echo [4/5] Verification port 8080...
 set PID_8080=
 for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":8080 " ^| findstr "LISTENING"') do (
@@ -86,7 +89,7 @@ if defined PID_8080 (
     echo [OK] Port 8080 disponible
 )
 
-REM ─── Compilation ─────────────────────────────────────
+REM --- Compilation ---
 echo [5/5] Compilation...
 call mvn clean package -DskipTests -q
 if errorlevel 1 (
@@ -96,7 +99,7 @@ if errorlevel 1 (
 )
 echo [OK] Compilation reussie
 
-REM ─── Demarrage ───────────────────────────────────────
+REM --- Demarrage ---
 echo.
 echo ====================================================
 echo         Application prete
