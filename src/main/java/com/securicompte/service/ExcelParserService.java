@@ -29,7 +29,10 @@ public class ExcelParserService {
     private static final List<String> SHEETS_STOCK =
         List.of("stock du mois", "stock mois", "stock mensuel", "stock");
 
-    public record ExcelData(List<Map<String, Object>> stock) {}
+    private static final List<String> SHEETS_NOUVELLES =
+        List.of("nouvelles souscriptions", "nouvelle souscription", "nouvelles");
+
+    public record ExcelData(List<Map<String, Object>> stock, Set<String> numerosNouvelles) {}
 
     /**
      * Parse le fichier Excel — seule la feuille "Stock du mois" est utilisée.
@@ -50,8 +53,21 @@ public class ExcelParserService {
                 throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable. Feuilles présentes : " + sheetsFound);
 
             List<Map<String, Object>> stock = parseSheet(sheetStock, true);
+
+            Set<String> numerosNouvelles = new HashSet<>();
+            Sheet sheetNouvelles = findSheet(workbook, SHEETS_NOUVELLES);
+            if (sheetNouvelles != null) {
+                for (Map<String, Object> row : parseSheet(sheetNouvelles, false)) {
+                    String num = getNumeroClient(row);
+                    if (num != null) numerosNouvelles.add(num);
+                }
+                log.info("Feuille nouvelles souscriptions — {} client(s) nouveau(x)", numerosNouvelles.size());
+            } else {
+                log.warn("Feuille 'nouvelles souscriptions' introuvable — classification par date de souscription");
+            }
+
             log.info("Parsing Excel OK — Stock: {}", stock.size());
-            return new ExcelData(stock);
+            return new ExcelData(stock, numerosNouvelles);
         }
     }
 
@@ -100,8 +116,20 @@ public class ExcelParserService {
         if (stock == null)
             throw new IllegalArgumentException("Feuille 'Stock du mois' introuvable dans le fichier.");
 
+        Set<String> numerosNouvelles = new HashSet<>();
+        List<Map<String, Object>> nouvellesRows = findSheetRows(sheetsData, SHEETS_NOUVELLES);
+        if (nouvellesRows != null) {
+            for (Map<String, Object> row : nouvellesRows) {
+                String num = getNumeroClient(row);
+                if (num != null) numerosNouvelles.add(num);
+            }
+            log.info("Feuille nouvelles souscriptions — {} client(s) nouveau(x)", numerosNouvelles.size());
+        } else {
+            log.warn("Feuille 'nouvelles souscriptions' introuvable — classification par date de souscription");
+        }
+
         log.info("Parsing XLSB OK — Stock: {}", stock.size());
-        return new ExcelData(stock);
+        return new ExcelData(stock, numerosNouvelles);
     }
 
     private List<Map<String, Object>> findSheetRows(Map<String, List<Map<String, Object>>> data, List<String> keywords) {

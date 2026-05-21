@@ -133,7 +133,8 @@ public class ImportService {
                 }
                 Map<String, Client> cache = construireClientCache(excelData.stock(), annee, mois);
                 int[] res = importerStockEtSouscriptionsBulk(
-                    excelData.stock(), annee, mois, importFichier, cache, errorDetails);
+                    excelData.stock(), annee, mois, importFichier, cache,
+                    excelData.numerosNouvelles(), errorDetails);
                 int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
                 return new int[]{res[0], res[1], res[2], ni, res[3]};
             });
@@ -305,6 +306,7 @@ public class ImportService {
     private int[] importerStockEtSouscriptionsBulk(List<Map<String, Object>> rows, int annee, int mois,
                                                      ImportFichier importFichier,
                                                      Map<String, Client> clientCache,
+                                                     Set<String> numerosNouvelles,
                                                      List<String> errorDetails) {
         List<Long> candidateIds = rows.stream()
             .map(r -> excelParserService.getNumeroClient(r))
@@ -354,11 +356,8 @@ public class ImportService {
                     stocksToSave.add(excelParserService.rowToStock(row, client, annee, mois, importFichier));
                     seenStock.add(client.getId());
 
-                    // Souscription : type déduit depuis dat_souscription
-                    java.time.LocalDate datSousc = excelParserService.getDate(row, "DATSOUSCRIPTION");
-                    TypeSouscription type = (datSousc != null
-                            && datSousc.getYear() == annee
-                            && datSousc.getMonthValue() == mois)
+                    // Souscription : type déduit depuis la feuille "nouvelles souscriptions" du fichier
+                    TypeSouscription type = numerosNouvelles.contains(num)
                         ? TypeSouscription.NOUVELLE : TypeSouscription.ANCIENNE;
 
                     Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
