@@ -360,13 +360,16 @@ public class ImportService {
                     TypeSouscription type = numerosNouvelles.contains(num)
                         ? TypeSouscription.NOUVELLE : TypeSouscription.ANCIENNE;
 
+                    // nbNouvelles = tous les clients présents dans la feuille nouvelles,
+                    // qu'ils aient déjà une souscription en base ou non (= correspond au fichier Excel)
+                    if (type == TypeSouscription.NOUVELLE) nbNouvelles++;
+
                     Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
                     String key = client.getId() + "_" + s.getDatSouscription() + "_" + type;
                     if (!existingKeys.contains(key)) {
                         souscToSave.add(s);
                         existingKeys.add(key);
-                        if (type == TypeSouscription.NOUVELLE) nbNouvelles++;
-                        else nbAnciennes++;
+                        if (type == TypeSouscription.ANCIENNE) nbAnciennes++;
                     }
                 }
             } catch (Exception e) {
