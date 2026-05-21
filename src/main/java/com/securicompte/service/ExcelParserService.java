@@ -95,9 +95,9 @@ public class ExcelParserService {
             while (iter.hasNext()) {
                 try (java.io.InputStream sheetStream = iter.next()) {
                     String sheetName = iter.getSheetName().toLowerCase().trim();
-                    boolean stopOnNomTotal = SHEETS_STOCK.stream().anyMatch(sheetName::contains)
-                                         || SHEETS_NOUVELLES.stream().anyMatch(sheetName::contains);
-                    XlsbRowCollector collector = new XlsbRowCollector(stopOnNomTotal);
+                    boolean isNouvelles = SHEETS_NOUVELLES.stream().anyMatch(sheetName::contains);
+                    boolean stopOnNomTotal = SHEETS_STOCK.stream().anyMatch(sheetName::contains) || isNouvelles;
+                    XlsbRowCollector collector = new XlsbRowCollector(stopOnNomTotal, isNouvelles);
                     XSSFBSheetHandler handler = new XSSFBSheetHandler(
                         sheetStream, styles, iter.getXSSFBSheetComments(),
                         sst, collector, new DataFormatter(), false);
@@ -150,6 +150,7 @@ public class ExcelParserService {
 
     private static class XlsbRowCollector implements XSSFBSheetHandler.SheetContentsHandler {
         private final boolean allowNomFallback;
+        private final boolean stopOnClientWithoutNom;
         private final List<Map<String, Object>> rows = new ArrayList<>();
         private final List<String> headers = new ArrayList<>();
         private final List<String> pendingHeaders = new ArrayList<>();
@@ -159,8 +160,12 @@ public class ExcelParserService {
         private boolean currentRowHasClientCol = false;
         private boolean currentRowHasNomCol = false;
 
-        XlsbRowCollector(boolean allowNomFallback) { this.allowNomFallback = allowNomFallback; }
-        XlsbRowCollector() { this(false); }
+        XlsbRowCollector(boolean allowNomFallback, boolean stopOnClientWithoutNom) {
+            this.allowNomFallback = allowNomFallback;
+            this.stopOnClientWithoutNom = stopOnClientWithoutNom;
+        }
+        XlsbRowCollector(boolean allowNomFallback) { this(allowNomFallback, false); }
+        XlsbRowCollector() { this(false, false); }
 
         @Override
         public void startRow(int rowNum) {
@@ -186,11 +191,17 @@ public class ExcelParserService {
                 Object clientVal = currentRow.get("CLIENT");
                 Object nomVal    = currentRow.get("NOM");
                 String nomStr    = nomVal != null ? nomVal.toString().toLowerCase().trim() : "";
+                boolean nomPresent = !nomStr.isEmpty();
                 if (nomStr.contains("total")) {
                     done = true;
                 } else if (clientVal != null && !clientVal.toString().isBlank()) {
-                    rows.add(currentRow);
-                } else if (allowNomFallback && nomVal != null && !nomVal.toString().isBlank()) {
+                    if (stopOnClientWithoutNom && !nomPresent) {
+                        // CLIENT présent sans NOM → ligne de total (ex: feuille nouvelles souscriptions)
+                        done = true;
+                    } else {
+                        rows.add(currentRow);
+                    }
+                } else if (allowNomFallback && nomPresent) {
                     // NOM présent mais pas de CLIENT → ligne de total → fin du stock
                     done = true;
                 }
@@ -262,11 +273,12 @@ public class ExcelParserService {
             Object clientVal = rowData.get("CLIENT");
             Object nomVal    = rowData.get("NOM");
             String nomStr    = nomVal != null ? nomVal.toString().toLowerCase().trim() : "";
+            boolean nomPresent = !nomStr.isEmpty();
             if (nomStr.contains("total")) {
                 break;
             } else if (clientVal != null && !clientVal.toString().isBlank()) {
                 rows.add(rowData);
-            } else if (allowNomFallback && nomVal != null && !nomVal.toString().isBlank()) {
+            } else if (allowNomFallback && nomPresent) {
                 // NOM présent mais pas de CLIENT → ligne de total → fin du stock
                 break;
             }
