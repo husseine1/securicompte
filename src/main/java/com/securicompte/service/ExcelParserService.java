@@ -95,8 +95,9 @@ public class ExcelParserService {
             while (iter.hasNext()) {
                 try (java.io.InputStream sheetStream = iter.next()) {
                     String sheetName = iter.getSheetName().toLowerCase().trim();
-                    boolean isStock = SHEETS_STOCK.stream().anyMatch(sheetName::contains);
-                    XlsbRowCollector collector = new XlsbRowCollector(isStock);
+                    boolean stopOnNomTotal = SHEETS_STOCK.stream().anyMatch(sheetName::contains)
+                                         || SHEETS_NOUVELLES.stream().anyMatch(sheetName::contains);
+                    XlsbRowCollector collector = new XlsbRowCollector(stopOnNomTotal);
                     XSSFBSheetHandler handler = new XSSFBSheetHandler(
                         sheetStream, styles, iter.getXSSFBSheetComments(),
                         sst, collector, new DataFormatter(), false);
@@ -184,7 +185,10 @@ public class ExcelParserService {
             } else if (currentRow != null) {
                 Object clientVal = currentRow.get("CLIENT");
                 Object nomVal    = currentRow.get("NOM");
-                if (clientVal != null && !clientVal.toString().isBlank()) {
+                String nomStr    = nomVal != null ? nomVal.toString().toLowerCase().trim() : "";
+                if (nomStr.contains("total")) {
+                    done = true;
+                } else if (clientVal != null && !clientVal.toString().isBlank()) {
                     rows.add(currentRow);
                 } else if (allowNomFallback && nomVal != null && !nomVal.toString().isBlank()) {
                     // NOM présent mais pas de CLIENT → ligne de total → fin du stock
@@ -257,7 +261,10 @@ public class ExcelParserService {
 
             Object clientVal = rowData.get("CLIENT");
             Object nomVal    = rowData.get("NOM");
-            if (clientVal != null && !clientVal.toString().isBlank()) {
+            String nomStr    = nomVal != null ? nomVal.toString().toLowerCase().trim() : "";
+            if (nomStr.contains("total")) {
+                break;
+            } else if (clientVal != null && !clientVal.toString().isBlank()) {
                 rows.add(rowData);
             } else if (allowNomFallback && nomVal != null && !nomVal.toString().isBlank()) {
                 // NOM présent mais pas de CLIENT → ligne de total → fin du stock
