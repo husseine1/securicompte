@@ -32,7 +32,12 @@ public class ExcelParserService {
     private static final List<String> SHEETS_NOUVELLES =
         List.of("nouvelles souscriptions", "nouvelle souscription", "nouvelles");
 
-    public record ExcelData(List<Map<String, Object>> stock, Set<String> numerosNouvelles) {}
+    private static final List<String> SHEETS_ANCIENNES =
+        List.of("anciennes souscriptions", "ancienne souscription", "anciennes");
+
+    public record ExcelData(List<Map<String, Object>> stock,
+                            Set<String> numerosNouvelles,
+                            Set<String> numerosAnciennes) {}
 
     /**
      * Parse le fichier Excel — seule la feuille "Stock du mois" est utilisée.
@@ -66,8 +71,18 @@ public class ExcelParserService {
                 log.warn("Feuille 'nouvelles souscriptions' introuvable — classification par date de souscription");
             }
 
+            Set<String> numerosAnciennes = new HashSet<>();
+            Sheet sheetAnciennes = findSheet(workbook, SHEETS_ANCIENNES);
+            if (sheetAnciennes != null) {
+                for (Map<String, Object> row : parseSheet(sheetAnciennes, false)) {
+                    String num = getNumeroClient(row);
+                    if (num != null) numerosAnciennes.add(num);
+                }
+                log.info("Feuille anciennes souscriptions — {} client(s) ancien(s)", numerosAnciennes.size());
+            }
+
             log.info("Parsing Excel OK — Stock: {}", stock.size());
-            return new ExcelData(stock, numerosNouvelles);
+            return new ExcelData(stock, numerosNouvelles, numerosAnciennes);
         }
     }
 
@@ -96,8 +111,10 @@ public class ExcelParserService {
                 try (java.io.InputStream sheetStream = iter.next()) {
                     String sheetName = iter.getSheetName().toLowerCase().trim();
                     boolean isNouvelles = SHEETS_NOUVELLES.stream().anyMatch(sheetName::contains);
-                    boolean stopOnNomTotal = SHEETS_STOCK.stream().anyMatch(sheetName::contains) || isNouvelles;
-                    XlsbRowCollector collector = new XlsbRowCollector(stopOnNomTotal, isNouvelles);
+                    boolean isAnciennes = SHEETS_ANCIENNES.stream().anyMatch(sheetName::contains);
+                    boolean isListSheet = isNouvelles || isAnciennes;
+                    boolean stopOnNomTotal = SHEETS_STOCK.stream().anyMatch(sheetName::contains) || isListSheet;
+                    XlsbRowCollector collector = new XlsbRowCollector(stopOnNomTotal, isListSheet);
                     XSSFBSheetHandler handler = new XSSFBSheetHandler(
                         sheetStream, styles, iter.getXSSFBSheetComments(),
                         sst, collector, new DataFormatter(), false);
@@ -129,8 +146,18 @@ public class ExcelParserService {
             log.warn("Feuille 'nouvelles souscriptions' introuvable — classification par date de souscription");
         }
 
+        Set<String> numerosAnciennes = new HashSet<>();
+        List<Map<String, Object>> anciennesRows = findSheetRows(sheetsData, SHEETS_ANCIENNES);
+        if (anciennesRows != null) {
+            for (Map<String, Object> row : anciennesRows) {
+                String num = getNumeroClient(row);
+                if (num != null) numerosAnciennes.add(num);
+            }
+            log.info("Feuille anciennes souscriptions — {} client(s) ancien(s)", numerosAnciennes.size());
+        }
+
         log.info("Parsing XLSB OK — Stock: {}", stock.size());
-        return new ExcelData(stock, numerosNouvelles);
+        return new ExcelData(stock, numerosNouvelles, numerosAnciennes);
     }
 
     private List<Map<String, Object>> findSheetRows(Map<String, List<Map<String, Object>>> data, List<String> keywords) {

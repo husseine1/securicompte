@@ -134,7 +134,7 @@ public class ImportService {
                 Map<String, Client> cache = construireClientCache(excelData.stock(), annee, mois);
                 int[] res = importerStockEtSouscriptionsBulk(
                     excelData.stock(), annee, mois, importFichier, cache,
-                    excelData.numerosNouvelles(), errorDetails);
+                    excelData.numerosNouvelles(), excelData.numerosAnciennes(), errorDetails);
                 int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois);
                 return new int[]{res[0], res[1], res[2], ni, res[3]};
             });
@@ -307,6 +307,7 @@ public class ImportService {
                                                      ImportFichier importFichier,
                                                      Map<String, Client> clientCache,
                                                      Set<String> numerosNouvelles,
+                                                     Set<String> numerosAnciennes,
                                                      List<String> errorDetails) {
         List<Long> candidateIds = rows.stream()
             .map(r -> excelParserService.getNumeroClient(r))
@@ -356,20 +357,21 @@ public class ImportService {
                     stocksToSave.add(excelParserService.rowToStock(row, client, annee, mois, importFichier));
                     seenStock.add(client.getId());
 
-                    // Souscription : type déduit depuis la feuille "nouvelles souscriptions" du fichier
+                    // NOUVELLE si présent dans la feuille nouvelles souscriptions,
+                    // ANCIENNE si présent dans la feuille anciennes souscriptions ou par défaut
                     TypeSouscription type = numerosNouvelles.contains(num)
                         ? TypeSouscription.NOUVELLE : TypeSouscription.ANCIENNE;
 
-                    // nbNouvelles = tous les clients présents dans la feuille nouvelles,
-                    // qu'ils aient déjà une souscription en base ou non (= correspond au fichier Excel)
+                    // nbNouvelles/nbAnciennes = tous les clients dans la feuille correspondante
+                    // (symétrique — correspond au compte du fichier Excel, indépendamment de la déduplication DB)
                     if (type == TypeSouscription.NOUVELLE) nbNouvelles++;
+                    else nbAnciennes++;
 
                     Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
                     String key = client.getId() + "_" + s.getDatSouscription() + "_" + type;
                     if (!existingKeys.contains(key)) {
                         souscToSave.add(s);
                         existingKeys.add(key);
-                        if (type == TypeSouscription.ANCIENNE) nbAnciennes++;
                     }
                 }
             } catch (Exception e) {
