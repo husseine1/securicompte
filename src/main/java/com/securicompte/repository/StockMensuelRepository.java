@@ -1,6 +1,7 @@
 package com.securicompte.repository;
 
 import com.securicompte.entity.StockMensuel;
+import com.securicompte.enums.Reseau;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -20,8 +21,12 @@ public interface StockMensuelRepository extends JpaRepository<StockMensuel, Long
     @Query("DELETE FROM StockMensuel s WHERE s.annee = :annee AND s.mois = :mois")
     void deleteBulkByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
-    @Query("SELECT DISTINCT s.client.id FROM StockMensuel s WHERE s.annee = :annee AND s.mois = :mois")
-    List<Long> findClientIdsPresentsDansMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("DELETE FROM StockMensuel s WHERE s.importFichier.id = :importId")
+    void deleteByImportFichierId(@Param("importId") Long importId);
+
+    @Query("SELECT DISTINCT s.client.id FROM StockMensuel s JOIN s.client c WHERE s.annee = :annee AND s.mois = :mois AND c.reseau = :reseau")
+    List<Long> findClientIdsPresentsDansMois(@Param("annee") Integer annee, @Param("mois") Integer mois, @Param("reseau") Reseau reseau);
 
     @Query("SELECT DISTINCT s.annee, s.mois FROM StockMensuel s ORDER BY s.annee ASC, s.mois ASC")
     List<Object[]> findAllDistinctAnneesMois();

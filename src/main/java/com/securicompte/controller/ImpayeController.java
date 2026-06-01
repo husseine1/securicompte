@@ -2,6 +2,7 @@ package com.securicompte.controller;
 
 import com.securicompte.dto.FiltreImpayeDto;
 import com.securicompte.dto.ImpayeDto;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.service.ClientService;
 import com.securicompte.service.ExcelExportService;
@@ -42,8 +43,14 @@ public class ImpayeController {
             @RequestParam(required = false) String agence,
             @RequestParam(required = false) String gestionnaire,
             @RequestParam(required = false) String statut,
+            @RequestParam(required = false) String reseau,
             @RequestParam(defaultValue = "0") int page,
             Model model) {
+
+        Reseau reseauEnum = null;
+        if (reseau != null && !reseau.isBlank()) {
+            try { reseauEnum = Reseau.valueOf(reseau.toUpperCase()); } catch (IllegalArgumentException ignored) {}
+        }
 
         FiltreImpayeDto filtre = FiltreImpayeDto.builder()
             .annee(annee)
@@ -51,6 +58,7 @@ public class ImpayeController {
             .agence(agence != null && !agence.isBlank() ? agence : null)
             .gestionnaire(gestionnaire != null && !gestionnaire.isBlank() ? gestionnaire : null)
             .statut(statut != null && !statut.isEmpty() ? StatutImpaye.valueOf(statut) : null)
+            .reseau(reseauEnum)
             .page(page)
             .size(25)
             .build();

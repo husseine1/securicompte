@@ -1,4 +1,5 @@
 package com.securicompte.dto;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import lombok.*;
 import java.math.BigDecimal;
@@ -7,6 +8,7 @@ import java.time.LocalDateTime;
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ImpayeDto {
     private Long id;
+    private Reseau reseau;
     private Long clientId;
     private String numeroClient;
     private String nomClient;

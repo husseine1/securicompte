@@ -41,6 +41,7 @@ public class ImpayeService {
             filtre.getAgence(),
             filtre.getGestionnaire(),
             filtre.getStatut(),
+            filtre.getReseau(),
             pageRequest
         );
 
@@ -54,7 +55,8 @@ public class ImpayeService {
             filtre.getMois(),
             filtre.getAgence(),
             filtre.getGestionnaire(),
-            filtre.getStatut()
+            filtre.getStatut(),
+            filtre.getReseau()
         );
         return impayes.stream().map(clientService::toImpayeDto).collect(Collectors.toList());
     }

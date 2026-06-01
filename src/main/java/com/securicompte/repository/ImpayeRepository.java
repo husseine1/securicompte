@@ -1,6 +1,7 @@
 package com.securicompte.repository;
 
 import com.securicompte.entity.Impaye;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,15 +31,17 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
           AND (:agence IS NULL OR i.agenceLib = :agence)
           AND (:gestionnaire IS NULL OR i.gestionnaire = :gestionnaire)
           AND (:statut IS NULL OR i.statut = :statut)
+          AND (:reseau IS NULL OR c.reseau = :reseau)
         ORDER BY i.annee DESC, i.mois DESC, c.nom ASC, i.id DESC
         """,
         countQuery = """
-        SELECT COUNT(i) FROM Impaye i
+        SELECT COUNT(i) FROM Impaye i JOIN i.client c
         WHERE (:annee IS NULL OR i.annee = :annee)
           AND (:mois  IS NULL OR i.mois  = :mois)
           AND (:agence IS NULL OR i.agenceLib = :agence)
           AND (:gestionnaire IS NULL OR i.gestionnaire = :gestionnaire)
           AND (:statut IS NULL OR i.statut = :statut)
+          AND (:reseau IS NULL OR c.reseau = :reseau)
         """)
     Page<Impaye> findByFilters(
         @Param("annee") Integer annee,
@@ -46,6 +49,7 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
         @Param("agence") String agence,
         @Param("gestionnaire") String gestionnaire,
         @Param("statut") StatutImpaye statut,
+        @Param("reseau") Reseau reseau,
         Pageable pageable
     );
 
@@ -56,6 +60,7 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
           AND (:agence IS NULL OR i.agenceLib = :agence)
           AND (:gestionnaire IS NULL OR i.gestionnaire = :gestionnaire)
           AND (:statut IS NULL OR i.statut = :statut)
+          AND (:reseau IS NULL OR c.reseau = :reseau)
         ORDER BY i.annee DESC, i.mois DESC, c.nom ASC, i.id DESC
         """)
     List<Impaye> findByFiltersForExport(
@@ -63,7 +68,8 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
         @Param("mois")  Integer mois,
         @Param("agence") String agence,
         @Param("gestionnaire") String gestionnaire,
-        @Param("statut") StatutImpaye statut
+        @Param("statut") StatutImpaye statut,
+        @Param("reseau") Reseau reseau
     );
 
     @Query("SELECT COUNT(i) FROM Impaye i WHERE i.statut = 'IMPAYE'")

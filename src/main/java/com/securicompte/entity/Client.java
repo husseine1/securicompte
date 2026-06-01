@@ -1,5 +1,6 @@
 package com.securicompte.entity;
 
+import com.securicompte.enums.Reseau;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +18,8 @@ import java.util.List;
     @Index(name = "idx_client_numero", columnList = "numero_client"),
     @Index(name = "idx_client_nom", columnList = "nom"),
     @Index(name = "idx_client_agence", columnList = "agence_lib"),
-    @Index(name = "idx_client_gestionnaire", columnList = "gestionnaire")
+    @Index(name = "idx_client_gestionnaire", columnList = "gestionnaire"),
+    @Index(name = "idx_client_reseau", columnList = "reseau")
 })
 @Data
 @Builder
@@ -30,7 +32,12 @@ public class Client {
     @SequenceGenerator(name = "client_seq", sequenceName = "client_id_seq", allocationSize = 500)
     private Long id;
 
-    @Column(name = "numero_client", nullable = false, unique = true, length = 50)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reseau", nullable = false, length = 10)
+    @Builder.Default
+    private Reseau reseau = Reseau.BNI;
+
+    @Column(name = "numero_client", nullable = false, length = 50)
     private String numeroClient;
 
     @Column(name = "nom", length = 200)

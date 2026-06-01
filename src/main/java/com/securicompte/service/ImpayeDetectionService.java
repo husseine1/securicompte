@@ -2,6 +2,7 @@ package com.securicompte.service;
 
 import com.securicompte.entity.Client;
 import com.securicompte.entity.Impaye;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.repository.ClientRepository;
 import com.securicompte.repository.ImpayeRepository;
@@ -53,15 +54,14 @@ public class ImpayeDetectionService {
      * @return nombre d'impayés nouvellement créés
      */
     @Transactional
-    public int detecterImpaYesDuMois(Integer annee, Integer mois) {
-        log.info("=== DÉTECTION IMPAYÉS {}/{} ===", mois, annee);
+    public int detecterImpaYesDuMois(Integer annee, Integer mois, Reseau reseau) {
+        log.info("=== DÉTECTION IMPAYÉS {}/{} [{}] ===", mois, annee, reseau);
 
-        // Dernier jour du mois — inclut les souscriptions en cours de mois (règle métier)
         LocalDate limiteHaute = YearMonth.of(annee, mois).atEndOfMonth();
 
-        // 1. Clients ayant souscrit avant ou pendant ce mois (une seule requête)
+        // 1. Clients du réseau ayant souscrit avant ou pendant ce mois
         Set<Long> clientsAvecSouscription = new HashSet<>(
-            souscriptionRepository.findClientIdsWithSouscriptionBefore(limiteHaute));
+            souscriptionRepository.findClientIdsWithSouscriptionBefore(limiteHaute, reseau));
         log.info("Clients avec souscription <= {}/{}: {}", mois, annee, clientsAvecSouscription.size());
 
         if (clientsAvecSouscription.isEmpty()) {
@@ -69,9 +69,9 @@ public class ImpayeDetectionService {
             return 0;
         }
 
-        // 2. Exclure les clients ayant un sinistre déclaré ce mois ou avant
+        // 2. Exclure les clients du réseau ayant un sinistre déclaré ce mois ou avant
         Set<Long> clientsAvecSinistre = new HashSet<>(
-            clientRepository.findClientIdsWithSinistreInOrBefore(limiteHaute));
+            clientRepository.findClientIdsWithSinistreInOrBefore(limiteHaute, reseau));
         if (!clientsAvecSinistre.isEmpty()) {
             clientsAvecSouscription.removeAll(clientsAvecSinistre);
             log.info("Clients exclus (sinistre): {}", clientsAvecSinistre.size());
@@ -82,9 +82,9 @@ public class ImpayeDetectionService {
             return 0;
         }
 
-        // 3. Clients présents dans le stock ce mois (une seule requête)
+        // 3. Clients du réseau présents dans le stock ce mois
         Set<Long> clientsPayesIds = new HashSet<>(
-            stockMensuelRepository.findClientIdsPresentsDansMois(annee, mois));
+            stockMensuelRepository.findClientIdsPresentsDansMois(annee, mois, reseau));
         log.info("Clients présents dans le stock: {}", clientsPayesIds.size());
 
         // NB : chaque mois est indépendant — pas de régularisation automatique des mois précédents
@@ -136,13 +136,16 @@ public class ImpayeDetectionService {
         impayeRepository.deleteAll();
 
         List<Object[]> moisImportes = stockMensuelRepository.findAllDistinctAnneesMois();
-        log.info("Recalcul sur {} mois importés", moisImportes.size());
+        log.info("Recalcul sur {} combinaisons mois/réseau", moisImportes.size());
 
-        for (Object[] row : moisImportes) {
-            if (row == null || row.length < 2 || row[0] == null || row[1] == null) continue;
-            Integer annee = ((Number) row[0]).intValue();
-            Integer mois  = ((Number) row[1]).intValue();
-            detecterImpaYesDuMois(annee, mois);
+        // Recalculer par réseau pour chaque mois distinct
+        for (Reseau reseau : Reseau.values()) {
+            for (Object[] row : moisImportes) {
+                if (row == null || row.length < 2 || row[0] == null || row[1] == null) continue;
+                Integer annee = ((Number) row[0]).intValue();
+                Integer mois  = ((Number) row[1]).intValue();
+                detecterImpaYesDuMois(annee, mois, reseau);
+            }
         }
     }
 }

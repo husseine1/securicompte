@@ -1,6 +1,7 @@
 package com.securicompte.service;
 
 import com.securicompte.entity.*;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.enums.StatutImport;
 import com.securicompte.repository.*;
@@ -76,7 +77,7 @@ public class SinistreImportService {
                 String numeroClient = row.get("CLIENT");
                 if (numeroClient == null || numeroClient.isBlank()) continue;
 
-                Optional<Client> opt = clientRepository.findByNumeroClient(numeroClient.trim());
+                Optional<Client> opt = clientRepository.findByReseauAndNumeroClient(Reseau.BNI, numeroClient.trim());
                 if (opt.isEmpty()) {
                     nbNonTrouves++;
                     erreurDetails.add("Client introuvable: " + numeroClient);

@@ -50,7 +50,15 @@
                     th:selected="${filtre?.gestionnaire == g}"></option>
           </select>
         </div>
-        <div class="col-md-2 d-flex gap-1">
+        <div class="col-md-1">
+          <label class="form-label fw-semibold" style="font-size:12px">RÉSEAU</label>
+          <select class="form-select form-select-sm" name="reseau">
+            <option value="">Tous</option>
+            <option value="BNI" th:selected="${filtre?.reseau?.name() == 'BNI'}">BNI</option>
+            <option value="SIB" th:selected="${filtre?.reseau?.name() == 'SIB'}">SIB</option>
+          </select>
+        </div>
+        <div class="col-md-1 d-flex gap-1">
           <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
             <i class="fas fa-filter me-1"></i>Filtrer
           </button>
@@ -79,13 +87,18 @@
         <table class="table table-hover mb-0">
           <thead>
             <tr>
-              <th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th>
+              <th>Réseau</th><th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th>
               <th>Période</th><th>Statut</th><th>Montant dû</th>
               <th>Détecté le</th><th>Régularisé le</th><th>Régularisé par</th><th></th>
             </tr>
           </thead>
           <tbody>
             <tr th:each="imp : ${impayes}">
+              <td>
+                <span class="badge"
+                      th:classappend="${imp.reseau?.name() == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                      th:text="${imp.reseau ?: 'BNI'}"></span>
+              </td>
               <td><a th:href="@{/clients/{id}(id=${imp.clientId})}"
                      class="text-decoration-none fw-semibold" th:text="${imp.numeroClient}"></a></td>
               <td th:text="${imp.nomClient}"></td>

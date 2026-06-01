@@ -2,6 +2,7 @@ package com.securicompte.controller;
 
 import com.securicompte.dto.ClientDetailDto;
 import com.securicompte.dto.ClientDto;
+import com.securicompte.enums.Reseau;
 import com.securicompte.service.ClientService;
 import com.securicompte.service.ExcelExportService;
 import org.springframework.http.HttpHeaders;
@@ -35,14 +36,20 @@ public class ClientController {
             @RequestParam(value = "compteFerme", required = false, defaultValue = "false") boolean compteFerme,
             @RequestParam(value = "annee", required = false, defaultValue = "0") int annee,
             @RequestParam(value = "mois", required = false, defaultValue = "0") int mois,
+            @RequestParam(value = "reseau", required = false) String reseauStr,
             @RequestParam(value = "page", defaultValue = "0") int page,
             Model model) {
 
+        Reseau reseau = null;
+        if (reseauStr != null && !reseauStr.isBlank()) {
+            try { reseau = Reseau.valueOf(reseauStr.toUpperCase()); } catch (IllegalArgumentException ignored) {}
+        }
+
         boolean hasFilter = !recherche.isEmpty() || !agence.isEmpty() || !gestionnaire.isEmpty()
-                         || sinistre || compteFerme || annee > 0;
+                         || sinistre || compteFerme || annee > 0 || reseau != null;
         if (hasFilter) {
             var clients = clientService.rechercherClients(
-                recherche, agence, gestionnaire, sinistre, compteFerme, annee, mois, page, 20);
+                recherche, agence, gestionnaire, sinistre, compteFerme, reseau, annee, mois, page, 20);
             model.addAttribute("clients", clients);
             model.addAttribute("totalPages", clients.getTotalPages());
             model.addAttribute("totalElements", clients.getTotalElements());
@@ -54,6 +61,7 @@ public class ClientController {
         model.addAttribute("compteFerme", compteFerme);
         model.addAttribute("annee", annee);
         model.addAttribute("mois", mois);
+        model.addAttribute("reseau", reseauStr != null ? reseauStr : "");
         model.addAttribute("page", page);
         model.addAttribute("agences", clientService.getAgences());
         model.addAttribute("gestionnaires", clientService.getGestionnaires());

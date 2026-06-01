@@ -1,6 +1,7 @@
 package com.securicompte.repository;
 
 import com.securicompte.entity.Souscription;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.TypeSouscription;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -24,8 +25,8 @@ public interface SouscriptionRepository extends JpaRepository<Souscription, Long
     @Query("DELETE FROM Souscription s WHERE s.importFichier.id = :importFichierId")
     void deleteByImportFichierId(@Param("importFichierId") Long importFichierId);
 
-    @Query("SELECT DISTINCT s.client.id FROM Souscription s WHERE s.datSouscription <= :date")
-    List<Long> findClientIdsWithSouscriptionBefore(@Param("date") LocalDate date);
+    @Query("SELECT DISTINCT s.client.id FROM Souscription s JOIN s.client c WHERE s.datSouscription <= :date AND c.reseau = :reseau")
+    List<Long> findClientIdsWithSouscriptionBefore(@Param("date") LocalDate date, @Param("reseau") Reseau reseau);
 
     /**
      * Charge toutes les souscriptions pour un ensemble de clients (avec client en JOIN FETCH).

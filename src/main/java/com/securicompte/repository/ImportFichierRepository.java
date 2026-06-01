@@ -1,6 +1,7 @@
 package com.securicompte.repository;
 
 import com.securicompte.entity.ImportFichier;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImport;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -12,8 +13,8 @@ import java.util.Optional;
 
 @Repository
 public interface ImportFichierRepository extends JpaRepository<ImportFichier, Long> {
-    Optional<ImportFichier> findByAnneeAndMois(Integer annee, Integer mois);
-    boolean existsByAnneeAndMois(Integer annee, Integer mois);
+    Optional<ImportFichier> findByReseauAndAnneeAndMois(Reseau reseau, Integer annee, Integer mois);
+    boolean existsByReseauAndAnneeAndMois(Reseau reseau, Integer annee, Integer mois);
     List<ImportFichier> findAllByOrderByAnneeDescMoisDesc();
     List<ImportFichier> findTop5ByOrderByDateImportDesc();
     List<ImportFichier> findByAnneeOrderByMoisDesc(Integer annee);

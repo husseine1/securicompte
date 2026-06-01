@@ -5,6 +5,7 @@ import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
 import com.securicompte.entity.ImportFichierBytes;
 import com.securicompte.entity.User;
+import com.securicompte.enums.Reseau;
 import com.securicompte.service.ImportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,32 +53,53 @@ public class ImportController {
     @PostMapping("/upload")
     @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
     public String uploadFichier(
+            @RequestParam(value = "reseau", defaultValue = "BNI") String reseauStr,
             @RequestParam("fichier") MultipartFile fichier,
+            @RequestParam(value = "fichierRenouvellement", required = false) MultipartFile fichierRenouvellement,
             @RequestParam("annee") Integer annee,
             @RequestParam("mois") Integer mois,
             @AuthenticationPrincipal User currentUser,
             RedirectAttributes redirectAttributes) {
+
+        Reseau reseau;
+        try {
+            reseau = Reseau.valueOf(reseauStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            redirectAttributes.addFlashAttribute("erreur", "Réseau invalide : " + reseauStr);
+            return "redirect:/import";
+        }
 
         if (fichier.isEmpty()) {
             redirectAttributes.addFlashAttribute("erreur", "Veuillez sélectionner un fichier Excel.");
             return "redirect:/import";
         }
 
-        String filename = fichier.getOriginalFilename();
-        if (filename == null ||
-            (!filename.endsWith(".xlsx") && !filename.endsWith(".xls") && !filename.endsWith(".xlsb"))) {
-            redirectAttributes.addFlashAttribute("erreur", "Le fichier doit être au format Excel (.xlsx, .xls ou .xlsb)");
-            return "redirect:/import";
-        }
-
         try {
-            // Copier les bytes avant l'appel async (le MultipartFile devient invalide après la requête HTTP)
-            byte[] fileBytes   = fichier.getBytes();
-            String contentType = fichier.getContentType();
+            if (reseau == Reseau.SIB) {
+                if (fichierRenouvellement == null || fichierRenouvellement.isEmpty()) {
+                    redirectAttributes.addFlashAttribute("erreur",
+                        "Pour un import SIB, veuillez fournir les deux fichiers (nouvelles souscriptions + renouvellement).");
+                    return "redirect:/import";
+                }
+                byte[] bytesNouvelles      = fichier.getBytes();
+                byte[] bytesRenouvellement = fichierRenouvellement.getBytes();
+                importService.importerFichierSibAsync(
+                    bytesNouvelles, bytesRenouvellement,
+                    fichier.getOriginalFilename(), fichierRenouvellement.getOriginalFilename(),
+                    fichier.getContentType(), annee, mois, currentUser);
+            } else {
+                String filename = fichier.getOriginalFilename();
+                if (filename == null ||
+                    (!filename.endsWith(".xlsx") && !filename.endsWith(".xls") && !filename.endsWith(".xlsb"))) {
+                    redirectAttributes.addFlashAttribute("erreur", "Le fichier doit être au format Excel (.xlsx, .xls ou .xlsb)");
+                    return "redirect:/import";
+                }
+                importService.importerFichierAsync(fichier.getBytes(), filename,
+                    fichier.getContentType(), annee, mois, reseau, currentUser);
+            }
 
-            importService.importerFichierAsync(fileBytes, filename, contentType, annee, mois, currentUser);
             redirectAttributes.addFlashAttribute("succes",
-                "Import lancé en arrière-plan pour " + mois + "/" + annee +
+                "Import " + reseau + " lancé en arrière-plan pour " + mois + "/" + annee +
                 " — la page se rafraîchira automatiquement.");
         } catch (Exception e) {
             log.error("Erreur lancement import fichier", e);

@@ -1,5 +1,6 @@
 package com.securicompte.entity;
 
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImport;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -23,6 +24,11 @@ public class ImportFichier {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reseau", nullable = false, length = 10)
+    @Builder.Default
+    private Reseau reseau = Reseau.BNI;
 
     @Column(name = "nom_fichier", nullable = false, length = 255)
     private String nomFichier;

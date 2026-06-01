@@ -1,6 +1,7 @@
 package com.securicompte.service;
 
 import com.securicompte.entity.*;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.TypeSouscription;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.openxml4j.opc.OPCPackage;
@@ -317,8 +318,9 @@ public class ExcelParserService {
     // Conversions Excel → Entités
     // ────────────────────────────────────────────────────────────────
 
-    public Client rowToClient(Map<String, Object> row) {
+    public Client rowToClient(Map<String, Object> row, Reseau reseau) {
         return Client.builder()
+            .reseau(reseau)
             .numeroClient(getNumeroClient(row))
             .nom(getString(row, "NOM"))
             .compte(getString(row, "COMPTE"))
@@ -385,10 +387,13 @@ public class ExcelParserService {
      * Ex : "02117730005" → "211773"
      */
     public String getNumeroClient(Map<String, Object> row) {
+        // CLIENT contient déjà le numéro propre (BNI ou SIB) — on le retourne tel quel
         String num = getString(row, "CLIENT");
-        if (num == null) num = getString(row, "COMPTE");
+        if (num != null) return num.isBlank() ? null : num;
+        // COMPTE = numéro de compte bancaire BNI format : 0 + numeroClient + clé(4 chiffres)
+        // Ex : "02117730005" → "211773"
+        num = getString(row, "COMPTE");
         if (num != null && num.length() > 7) {
-            // Numéro de compte bancaire : enlever 1er chiffre + 4 derniers
             num = num.substring(1, num.length() - 4).trim();
         }
         return num == null || num.isBlank() ? null : num;

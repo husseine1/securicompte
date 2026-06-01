@@ -80,7 +80,15 @@
               </div>
             </div>
           </div>
-          <div class="col-md-2 d-flex align-items-end gap-2">
+          <div class="col-md-1">
+            <label class="form-label fw-semibold" style="font-size:12px">RÉSEAU</label>
+            <select class="form-select" name="reseau">
+              <option value="">Tous</option>
+              <option value="BNI" th:selected="${reseau == 'BNI'}">BNI</option>
+              <option value="SIB" th:selected="${reseau == 'SIB'}">SIB</option>
+            </select>
+          </div>
+          <div class="col-md-1 d-flex align-items-end gap-2">
             <button type="submit" class="btn btn-primary flex-grow-1">
               <i class="fas fa-search me-1"></i>Rechercher
             </button>
@@ -108,10 +116,15 @@
     <div class="card-body p-0">
       <table class="table table-hover mb-0">
         <thead>
-          <tr><th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th><th>Zone</th><th>Statut</th><th>Actions</th></tr>
+          <tr><th>Réseau</th><th>N° Client</th><th>Nom</th><th>Agence</th><th>Gestionnaire</th><th>Zone</th><th>Statut</th><th>Actions</th></tr>
         </thead>
         <tbody>
           <tr th:each="c : ${clients}">
+            <td>
+              <span class="badge"
+                    th:classappend="${c.reseau?.name() == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                    th:text="${c.reseau ?: 'BNI'}"></span>
+            </td>
             <td class="fw-semibold">
               <a th:href="@{/clients/{id}(id=${c.id})}" class="text-decoration-none"
                  th:text="${c.numeroClient}"></a>

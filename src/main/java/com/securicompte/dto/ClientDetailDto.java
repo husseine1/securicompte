@@ -1,4 +1,5 @@
 package com.securicompte.dto;
+import com.securicompte.enums.Reseau;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -7,6 +8,7 @@ import java.util.List;
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ClientDetailDto {
     private Long id;
+    private Reseau reseau;
     private String numeroClient;
     private String nom;
     private LocalDate dateNaissance;

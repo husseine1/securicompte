@@ -42,6 +42,7 @@ public class ClientService {
      */
     public Page<ClientDto> rechercherClients(String recherche, String agence, String gestionnaire,
                                               boolean sinistre, boolean compteFerme,
+                                              com.securicompte.enums.Reseau reseau,
                                               int annee, int mois, int page, int size) {
         Page<Client> clients = clientRepository.rechercherClients(
             recherche,
@@ -49,11 +50,13 @@ public class ClientService {
             gestionnaire != null ? gestionnaire : "",
             sinistre,
             compteFerme,
+            reseau,
             annee,
             mois,
             PageRequest.of(page, size, Sort.by("nom")));
         return clients.map(c -> ClientDto.builder()
             .id(c.getId())
+            .reseau(c.getReseau())
             .numeroClient(c.getNumeroClient())
             .nom(c.getNom())
             .zoneLib(c.getZoneLib())
@@ -129,6 +132,7 @@ public class ClientService {
 
         return ClientDetailDto.builder()
             .id(client.getId())
+            .reseau(client.getReseau())
             .numeroClient(client.getNumeroClient())
             .nom(client.getNom())
             .dateNaissance(client.getDateNaissance())
@@ -288,7 +292,7 @@ public class ClientService {
                 recherche,
                 agence != null ? agence : "",
                 gestionnaire != null ? gestionnaire : "",
-                sinistre, compteFerme, annee, mois,
+                sinistre, compteFerme, null, annee, mois,
                 Pageable.unpaged())
             .stream()
             .map(c -> ClientDto.builder()

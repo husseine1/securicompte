@@ -1,6 +1,7 @@
 package com.securicompte.repository;
 
 import com.securicompte.entity.Client;
+import com.securicompte.enums.Reseau;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,9 +16,9 @@ import java.util.Optional;
 
 @Repository
 public interface ClientRepository extends JpaRepository<Client, Long> {
-    Optional<Client> findByNumeroClient(String numeroClient);
-    boolean existsByNumeroClient(String numeroClient);
-    List<Client> findByNumeroClientIn(Collection<String> numeroClients);
+    Optional<Client> findByReseauAndNumeroClient(Reseau reseau, String numeroClient);
+    boolean existsByReseauAndNumeroClient(Reseau reseau, String numeroClient);
+    List<Client> findByReseauAndNumeroClientIn(Reseau reseau, Collection<String> numeroClients);
     List<Client> findByNomIn(Collection<String> noms);
 
     @Query("""
@@ -28,6 +29,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
           AND (:gestionnaire = '' OR c.gestionnaire = :gestionnaire)
           AND (:sinistre = false OR c.dateSinistre IS NOT NULL)
           AND (:compteFerme = false OR c.dateCompteFerme IS NOT NULL)
+          AND (:reseau IS NULL OR c.reseau = :reseau)
           AND (:annee = 0 OR EXISTS (
                 SELECT 1 FROM Impaye i WHERE i.client = c
                   AND i.annee = :annee
@@ -38,6 +40,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
                                    @Param("gestionnaire") String gestionnaire,
                                    @Param("sinistre") boolean sinistre,
                                    @Param("compteFerme") boolean compteFerme,
+                                   @Param("reseau") Reseau reseau,
                                    @Param("annee") int annee,
                                    @Param("mois") int mois,
                                    Pageable pageable);
@@ -48,8 +51,8 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     @Query("SELECT DISTINCT c.gestionnaire FROM Client c WHERE c.gestionnaire IS NOT NULL ORDER BY c.gestionnaire")
     List<String> findDistinctGestionnaires();
 
-    @Query("SELECT c.id FROM Client c WHERE c.dateSinistre IS NOT NULL AND c.dateSinistre <= :date")
-    List<Long> findClientIdsWithSinistreInOrBefore(@Param("date") LocalDate date);
+    @Query("SELECT c.id FROM Client c WHERE c.dateSinistre IS NOT NULL AND c.dateSinistre <= :date AND c.reseau = :reseau")
+    List<Long> findClientIdsWithSinistreInOrBefore(@Param("date") LocalDate date, @Param("reseau") Reseau reseau);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

@@ -19,10 +19,25 @@
             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
 
             <div class="mb-3">
-              <label class="form-label fw-semibold" style="font-size:12px">FICHIER EXCEL</label>
+              <label class="form-label fw-semibold" style="font-size:12px">RÉSEAU</label>
+              <select class="form-select" id="reseauSelect" name="reseau" required>
+                <option value="BNI">BNI</option>
+                <option value="SIB">SIB</option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold" style="font-size:12px" id="labelFichier1">FICHIER EXCEL</label>
               <input type="file" class="form-control" id="fichierInput" name="fichier"
                      accept=".xlsx,.xls,.xlsb" required>
-              <div class="form-text">Formats acceptés : .xlsx, .xls, .xlsb</div>
+              <div class="form-text" id="hintFichier1">Formats acceptés : .xlsx, .xls, .xlsb</div>
+            </div>
+
+            <div class="mb-3 d-none" id="sibFile2Block">
+              <label class="form-label fw-semibold" style="font-size:12px">FICHIER RENOUVELLEMENT (SIB)</label>
+              <input type="file" class="form-control" id="fichierRenouvellement" name="fichierRenouvellement"
+                     accept=".xlsx,.xls,.xlsb">
+              <div class="form-text">Fichier "renouvellement" du même mois</div>
             </div>
 
             <div class="row g-2 mb-3">
@@ -108,6 +123,7 @@
             <thead>
               <tr>
                 <th>Période</th>
+                <th>Réseau</th>
                 <th>Fichier</th>
                 <th>Stock</th>
                 <th>Nouvelles</th>
@@ -123,6 +139,11 @@
                 <td>
                   <span class="badge bg-primary"
                         th:text="${imp.mois + '/' + imp.annee}"></span>
+                </td>
+                <td>
+                  <span class="badge"
+                        th:classappend="${imp.reseau != null and imp.reseau.name() == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                        th:text="${imp.reseau != null ? imp.reseau : 'BNI'}"></span>
                 </td>
                 <td class="text-truncate" style="max-width:180px" th:text="${imp.nomFichier}"></td>
                 <td th:text="${imp.nbStock}"></td>
@@ -248,6 +269,21 @@
         bootstrap.Popover.getInstance(el)?.hide();
       });
     }
+  });
+
+  // ─── Sélection réseau : affichage conditionnel du 2e fichier SIB ────────────
+  const reseauSelect   = document.getElementById('reseauSelect');
+  const sibFile2Block  = document.getElementById('sibFile2Block');
+  const labelFichier1  = document.getElementById('labelFichier1');
+  const hintFichier1   = document.getElementById('hintFichier1');
+  const inputRenouv    = document.getElementById('fichierRenouvellement');
+
+  reseauSelect.addEventListener('change', function() {
+    const isSib = this.value === 'SIB';
+    sibFile2Block.classList.toggle('d-none', !isSib);
+    labelFichier1.textContent = isSib ? 'FICHIER NOUVELLES SOUSCRIPTIONS (SIB)' : 'FICHIER EXCEL';
+    hintFichier1.textContent  = isSib ? 'Fichier "nouvelles souscriptions" du mois' : 'Formats acceptés : .xlsx, .xls, .xlsb';
+    if (inputRenouv) inputRenouv.required = isSib;
   });
 
   // ─── Éléments DOM ───────────────────────────────────────────────────────────

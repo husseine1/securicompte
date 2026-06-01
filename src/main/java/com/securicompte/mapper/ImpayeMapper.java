@@ -15,6 +15,7 @@ import org.mapstruct.*;
 public interface ImpayeMapper {
 
     @Mapping(source = "client.id",            target = "clientId")
+    @Mapping(source = "client.reseau",        target = "reseau")
     @Mapping(source = "client.numeroClient",  target = "numeroClient")
     @Mapping(source = "client.nom",           target = "nomClient")
     @Mapping(source = "souscription.securicompte", target = "securicompte")
