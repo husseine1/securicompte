@@ -3,8 +3,10 @@ package com.securicompte.service;
 import com.securicompte.dto.*;
 import com.securicompte.entity.Impaye;
 import com.securicompte.entity.StockMensuel;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.repository.ImpayeRepository;
+import com.securicompte.repository.ImportFichierRepository;
 import com.securicompte.repository.StockMensuelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,10 +28,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ImpayeService {
 
-    private final ImpayeRepository      impayeRepository;
-    private final ClientService         clientService;
+    private final ImpayeRepository       impayeRepository;
+    private final ClientService          clientService;
     private final StockMensuelRepository stockMensuelRepository;
-    private final NotificationService   notificationService;
+    private final ImportFichierRepository importFichierRepository;
+    private final NotificationService    notificationService;
 
     @Transactional(readOnly = true)
     public Page<ImpayeDto> getImpaYesWithFilters(FiltreImpayeDto filtre) {
@@ -62,8 +65,7 @@ public class ImpayeService {
     }
 
     @Transactional(readOnly = true)
-    public DashboardStatsDto getDashboardStats() {
-        // Comptage par statut → taux de régularisation
+    public DashboardStatsDto getDashboardStats(Reseau reseau) {
         Map<String, Long> parStatut = new HashMap<>();
         impayeRepository.countParStatut().forEach(row -> {
             if (row[0] != null) parStatut.put(row[0].toString(), ((Number) row[1]).longValue());
@@ -72,10 +74,10 @@ public class ImpayeService {
         long totalRegularises = parStatut.getOrDefault("REGULARISE", 0L);
         long totalComptable  = totalImpayes + totalRegularises;
         double tauxReg = totalComptable > 0 ? totalRegularises * 100.0 / totalComptable : 0.0;
-
         long totalClientsAvecImpayes = impayeRepository.countClientsAvecImpayes();
 
-        List<StatMoisDto> statsParMois = impayeRepository.countImpaYesParMois().stream()
+        // Impayés par mois filtrés par réseau
+        List<StatMoisDto> statsParMois = impayeRepository.countImpaYesParMoisByReseau(reseau).stream()
             .limit(12)
             .filter(row -> row[0] != null && row[1] != null)
             .map(row -> StatMoisDto.builder()
@@ -86,7 +88,19 @@ public class ImpayeService {
                 .build())
             .collect(Collectors.toList());
 
-        List<StatAgenceDto> statsParAgence = impayeRepository.countImpaYesParAgence(null).stream()
+        // Évolution du stock par mois (depuis import_fichier)
+        List<StatMoisDto> stockParMois = importFichierRepository.findStockEvolution(reseau).stream()
+            .map(row -> StatMoisDto.builder()
+                .annee(((Number) row[0]).intValue())
+                .mois(((Number) row[1]).intValue())
+                .moisNom(getMoisNom(((Number) row[1]).intValue()))
+                .nbStock(row[2] != null ? ((Number) row[2]).longValue() : 0L)
+                .nbNouvelles(row[3] != null ? ((Number) row[3]).longValue() : 0L)
+                .nbAnciennes(row[4] != null ? ((Number) row[4]).longValue() : 0L)
+                .build())
+            .collect(Collectors.toList());
+
+        List<StatAgenceDto> statsParAgence = impayeRepository.countImpaYesParAgenceByReseau(null, reseau).stream()
             .limit(10)
             .filter(row -> row[1] != null)
             .map(row -> StatAgenceDto.builder()
@@ -95,9 +109,8 @@ public class ImpayeService {
                 .build())
             .collect(Collectors.toList());
 
-        // Top 10 clients avec le plus d'impayés actifs
         List<Top10ClientDto> top10 = impayeRepository
-            .findClientsAvecPlusImpayes(StatutImpaye.IMPAYE).stream()
+            .findClientsAvecPlusImpayes(StatutImpaye.IMPAYE, reseau).stream()
             .limit(10)
             .map(row -> Top10ClientDto.builder()
                 .nom(row[0] != null ? row[0].toString() : "-")
@@ -112,9 +125,10 @@ public class ImpayeService {
             .tauxRegularisation(tauxReg)
             .totalClientsAvecImpayes(totalClientsAvecImpayes)
             .statsParMois(statsParMois)
+            .stockParMois(stockParMois)
             .statsParAgence(statsParAgence)
             .top10Clients(top10)
-            .build(); // totalClients et totalImportsFaits sont renseignés par DashboardController
+            .build();
     }
 
     @Transactional

@@ -10,7 +10,10 @@ public class DashboardStatsDto {
     private double tauxRegularisation;
     private long totalClientsAvecImpayes;
     private long totalImportsFaits;
+    private long clientsBni;
+    private long clientsSib;
     private List<StatMoisDto>    statsParMois;
+    private List<StatMoisDto>    stockParMois;
     private List<StatAgenceDto>  statsParAgence;
     private List<ImportResultDto> derniersImports;
     private List<Top10ClientDto> top10Clients;

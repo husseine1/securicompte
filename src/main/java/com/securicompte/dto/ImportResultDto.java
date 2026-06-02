@@ -8,6 +8,7 @@ public class ImportResultDto {
     private String nomFichier;
     private Integer annee;
     private Integer mois;
+    private String reseau;
     private String statut;
     @Builder.Default private int nbNouvelles = 0;
     @Builder.Default private int nbAnciennes = 0;

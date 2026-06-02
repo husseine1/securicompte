@@ -230,6 +230,12 @@
                         <i class="fas fa-file-times"></i>
                       </button>
                     </form>
+                    <!-- Rapport PDF mensuel -->
+                    <a th:if="${imp.statut.name() == 'SUCCES'}"
+                       th:href="@{/import/{id}/rapport-pdf(id=${imp.id})}"
+                       class="btn btn-sm btn-outline-danger py-0 px-2" title="Rapport PDF mensuel">
+                      <i class="fas fa-file-pdf"></i>
+                    </a>
                     <!-- Supprimer l'import complet -->
                     <form th:action="@{/import/{id}/supprimer(id=${imp.id})}" method="post" class="d-inline"
                           sec:authorize="hasRole('ROLE_ADMIN')"

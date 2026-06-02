@@ -5,6 +5,20 @@
 <body>
 <section>
 
+  <!-- Filtre réseau -->
+  <div class="d-flex gap-2 mb-4 align-items-center">
+    <span class="fw-semibold text-muted" style="font-size:13px">Réseau :</span>
+    <a th:href="@{/dashboard}" th:classappend="${reseauFiltre == ''} ? 'btn-primary' : 'btn-outline-secondary'"
+       class="btn btn-sm">Tous</a>
+    <a th:href="@{/dashboard(reseau=BNI)}" th:classappend="${reseauFiltre == 'BNI'} ? 'btn-dark' : 'btn-outline-dark'"
+       class="btn btn-sm">BNI</a>
+    <a th:href="@{/dashboard(reseau=SIB)}" th:classappend="${reseauFiltre == 'SIB'} ? 'btn-info' : 'btn-outline-info'"
+       class="btn btn-sm">SIB</a>
+    <small th:if="${reseauFiltre != ''}" class="text-muted ms-2">
+      Données filtrées — réseau <strong th:text="${reseauFiltre}"></strong>
+    </small>
+  </div>
+
   <!-- Stats Cards -->
   <div class="row row-cols-2 row-cols-md-5 g-3 mb-4">
     <div class="col">
@@ -65,17 +79,55 @@
     </div>
   </div>
 
+  <!-- Stats BNI vs SIB -->
+  <div class="row g-3 mb-3" th:if="${reseauFiltre == ''}">
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#1e3a5f20"><span class="fw-bold" style="color:#1e3a5f;font-size:18px">BNI</span></div>
+          <div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Clients BNI</div>
+            <div class="fs-5 fw-bold" th:text="${stats?.clientsBni ?: 0}">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap" style="background:#0891b220"><span class="fw-bold" style="color:#0891b2;font-size:18px">SIB</span></div>
+          <div>
+            <div class="text-muted" style="font-size:11px;text-transform:uppercase">Clients SIB</div>
+            <div class="fs-5 fw-bold" th:text="${stats?.clientsSib ?: 0}">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-3 mb-3">
-    <!-- Graphique impayés par mois -->
+    <!-- Graphique stock par mois -->
     <div class="col-lg-8">
       <div class="card border-0 shadow-sm">
         <div class="card-header bg-white border-0 pt-3">
-          <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar me-2 text-primary"></i>Évolution des impayés par mois</h6>
+          <h6 class="mb-0 fw-bold"><i class="fas fa-chart-line me-2 text-success"></i>Évolution du stock par mois</h6>
         </div>
-        <div class="card-body"><canvas id="impayesChart" height="90"></canvas></div>
+        <div class="card-body"><canvas id="stockChart" height="90"></canvas></div>
       </div>
     </div>
 
+    <!-- Graphique impayés par mois -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 pt-3">
+          <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar me-2 text-danger"></i>Impayés par mois</h6>
+        </div>
+        <div class="card-body"><canvas id="impayesChart" height="180"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
     <!-- Impayés par agence -->
     <div class="col-lg-4">
       <div class="card border-0 shadow-sm h-100">
@@ -142,10 +194,15 @@
         </div>
         <div class="card-body p-0">
           <table class="table table-hover mb-0">
-            <thead><tr><th>Fichier</th><th>Période</th><th>Stock</th><th>Statut</th><th>Date import</th></tr></thead>
+            <thead><tr><th>Réseau</th><th>Fichier</th><th>Période</th><th>Stock</th><th>Statut</th><th>Date import</th></tr></thead>
             <tbody>
               <tr th:each="imp : ${stats?.derniersImports}">
-                <td class="text-truncate" style="max-width:150px" th:text="${imp.nomFichier}"></td>
+                <td>
+                  <span class="badge"
+                        th:classappend="${imp.reseau == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                        th:text="${imp.reseau ?: 'BNI'}"></span>
+                </td>
+                <td class="text-truncate" style="max-width:130px" th:text="${imp.nomFichier}"></td>
                 <td><span class="badge bg-secondary" th:text="${imp.mois + '/' + imp.annee}"></span></td>
                 <td th:text="${imp.nbStock}"></td>
                 <td>
@@ -170,12 +227,53 @@
 
   <script th:inline="javascript">
   /*<![CDATA[*/
+  const MOIS = ["","Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+
+  // ─── Graphique stock par mois ──────────────────────────────────────────────
+  const stockParMois = /*[[${stats?.stockParMois}]]*/ [];
+  if (stockParMois && stockParMois.length > 0) {
+    const labels = stockParMois.map(s => MOIS[s.mois] + " " + s.annee);
+    new Chart(document.getElementById("stockChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Stock total",
+            data: stockParMois.map(s => s.nbStock),
+            borderColor: "#1d4ed8", backgroundColor: "rgba(29,78,216,.1)",
+            tension: 0.3, fill: true, borderWidth: 2, pointRadius: 3
+          },
+          {
+            label: "Nouvelles",
+            data: stockParMois.map(s => s.nbNouvelles),
+            borderColor: "#16a34a", backgroundColor: "transparent",
+            tension: 0.3, borderWidth: 2, pointRadius: 3, borderDash: [4,4]
+          },
+          {
+            label: "Anciennes",
+            data: stockParMois.map(s => s.nbAnciennes),
+            borderColor: "#9333ea", backgroundColor: "transparent",
+            tension: 0.3, borderWidth: 2, pointRadius: 3, borderDash: [2,2]
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: "top" } },
+        scales: { y: { beginAtZero: false, ticks: { callback: v => v.toLocaleString() } } }
+      }
+    });
+  } else {
+    const el = document.getElementById("stockChart");
+    if (el) el.parentElement.innerHTML =
+      '<div class="text-center text-muted py-4"><i class="fas fa-chart-line fa-3x mb-2 d-block"></i>Aucune donnée de stock</div>';
+  }
+
+  // ─── Graphique impayés par mois ────────────────────────────────────────────
   const statsParMois = /*[[${stats?.statsParMois}]]*/ [];
   if (statsParMois && statsParMois.length > 0) {
-    const labels = statsParMois.map(s => {
-      const m = ["","Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-      return m[s.mois] + " " + s.annee;
-    });
+    const labels = statsParMois.map(s => MOIS[s.mois] + " " + s.annee);
     new Chart(document.getElementById("impayesChart"), {
       type: "bar",
       data: {

@@ -3,10 +3,15 @@ package com.securicompte.controller;
 import com.securicompte.dto.ChangementClientDto;
 import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
+import com.securicompte.dto.StatAgenceDto;
+import com.securicompte.entity.ImportFichier;
 import com.securicompte.entity.ImportFichierBytes;
 import com.securicompte.entity.User;
 import com.securicompte.enums.Reseau;
+import com.securicompte.repository.ImpayeRepository;
 import com.securicompte.service.ImportService;
+import com.securicompte.service.ImpayeService;
+import com.securicompte.service.PdfExportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -30,7 +35,10 @@ import java.util.Map;
 @Slf4j
 public class ImportController {
 
-    private final ImportService importService;
+    private final ImportService    importService;
+    private final ImpayeService    impayeService;
+    private final PdfExportService pdfExportService;
+    private final ImpayeRepository impayeRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
@@ -151,6 +159,43 @@ public class ImportController {
         int nb = importService.purgerClientsOrphelins();
         log.info("Purge clients orphelins : {} client(s) supprimé(s)", nb);
         return Map.of("nbSupprimes", nb);
+    }
+
+    // ─── Rapport PDF mensuel ──────────────────────────────────────────────────
+
+    @GetMapping("/{id}/rapport-pdf")
+    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
+    public ResponseEntity<byte[]> rapportPdf(@PathVariable Long id) {
+        try {
+            ImportFichier imp = importService.getImportById(id);
+            Reseau reseau = imp.getReseau() != null ? imp.getReseau() : Reseau.BNI;
+
+            com.securicompte.dto.FiltreImpayeDto filtre = com.securicompte.dto.FiltreImpayeDto.builder()
+                .annee(imp.getAnnee()).mois(imp.getMois()).reseau(reseau).build();
+            java.util.List<com.securicompte.dto.ImpayeDto> impayes = impayeService.getImpaYesForExport(filtre);
+
+            java.util.List<StatAgenceDto> statsAgence = impayeRepository
+                .countImpaYesParAgenceByReseau(imp.getAnnee(), reseau).stream()
+                .limit(15)
+                .filter(r -> r[1] != null)
+                .map(r -> StatAgenceDto.builder()
+                    .agence(r[0] != null ? r[0].toString() : "N/A")
+                    .nbImpayes(((Number) r[1]).longValue())
+                    .build())
+                .collect(java.util.stream.Collectors.toList());
+
+            byte[] pdf = pdfExportService.genererRapportMensuel(imp, impayes, statsAgence);
+            String moisNoms[] = {"","Janvier","Fevrier","Mars","Avril","Mai","Juin",
+                                  "Juillet","Aout","Septembre","Octobre","Novembre","Decembre"};
+            String filename = "rapport_" + reseau + "_" + moisNoms[imp.getMois()] + "_" + imp.getAnnee() + ".pdf";
+            return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+        } catch (Exception e) {
+            log.error("Erreur génération rapport PDF: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     // ─── Fichiers Excel ───────────────────────────────────────────────────────

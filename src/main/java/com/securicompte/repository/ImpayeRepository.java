@@ -87,6 +87,14 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     List<Object[]> countImpaYesParMois();
 
     @Query("""
+        SELECT i.annee, i.mois, COUNT(i) FROM Impaye i JOIN i.client c
+        WHERE i.statut = 'IMPAYE' AND (:reseau IS NULL OR c.reseau = :reseau)
+        GROUP BY i.annee, i.mois
+        ORDER BY i.annee DESC, i.mois DESC
+        """)
+    List<Object[]> countImpaYesParMoisByReseau(@Param("reseau") Reseau reseau);
+
+    @Query("""
         SELECT i.agenceLib, COUNT(i) FROM Impaye i
         WHERE i.statut = 'IMPAYE'
           AND (:annee IS NULL OR i.annee = :annee)
@@ -94,6 +102,16 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
         ORDER BY COUNT(i) DESC
         """)
     List<Object[]> countImpaYesParAgence(@Param("annee") Integer annee);
+
+    @Query("""
+        SELECT i.agenceLib, COUNT(i) FROM Impaye i JOIN i.client c
+        WHERE i.statut = 'IMPAYE'
+          AND (:annee IS NULL OR i.annee = :annee)
+          AND (:reseau IS NULL OR c.reseau = :reseau)
+        GROUP BY i.agenceLib
+        ORDER BY COUNT(i) DESC
+        """)
+    List<Object[]> countImpaYesParAgenceByReseau(@Param("annee") Integer annee, @Param("reseau") Reseau reseau);
 
     @Query("SELECT DISTINCT i.annee FROM Impaye i ORDER BY i.annee DESC")
     List<Integer> findDistinctAnnees();
@@ -133,11 +151,11 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     @Query("""
         SELECT c.nom, c.numeroClient, COUNT(i)
         FROM Impaye i JOIN i.client c
-        WHERE i.statut = :statut
+        WHERE i.statut = :statut AND (:reseau IS NULL OR c.reseau = :reseau)
         GROUP BY c.id, c.nom, c.numeroClient
         ORDER BY COUNT(i) DESC
         """)
-    List<Object[]> findClientsAvecPlusImpayes(@Param("statut") StatutImpaye statut);
+    List<Object[]> findClientsAvecPlusImpayes(@Param("statut") StatutImpaye statut, @Param("reseau") Reseau reseau);
 
     @Modifying(clearAutomatically = true)
     @Query("""

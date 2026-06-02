@@ -7,4 +7,7 @@ public class StatMoisDto {
     private Integer mois;
     private String moisNom;
     private long nbImpayes;
+    private long nbStock;
+    private long nbNouvelles;
+    private long nbAnciennes;
 }

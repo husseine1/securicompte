@@ -38,6 +38,15 @@ public interface ImportFichierRepository extends JpaRepository<ImportFichier, Lo
     long countByStatut(StatutImport statut);
 
     @Query("""
+        SELECT f.annee, f.mois, f.nbStock, f.nbNouvelles, f.nbAnciennes
+        FROM ImportFichier f
+        WHERE f.statut = 'SUCCES'
+          AND (:reseau IS NULL OR f.reseau = :reseau)
+        ORDER BY f.annee ASC, f.mois ASC
+        """)
+    List<Object[]> findStockEvolution(@Param("reseau") Reseau reseau);
+
+    @Query("""
         SELECT f FROM ImportFichier f
         WHERE f.statut = 'SUCCES'
         AND (f.annee > :annee OR (f.annee = :annee AND f.mois >= :mois))

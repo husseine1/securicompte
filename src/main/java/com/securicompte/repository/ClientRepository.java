@@ -45,6 +45,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
                                    @Param("mois") int mois,
                                    Pageable pageable);
 
+    @Query("SELECT c.reseau, COUNT(c) FROM Client c GROUP BY c.reseau")
+    List<Object[]> countByReseau();
+
     @Query("SELECT DISTINCT c.agenceLib FROM Client c WHERE c.agenceLib IS NOT NULL ORDER BY c.agenceLib")
     List<String> findDistinctAgences();
 
