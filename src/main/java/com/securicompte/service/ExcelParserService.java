@@ -547,12 +547,12 @@ public class ExcelParserService {
                 }
                 // dd/MM/yyyy ou dd/MM/yy — format français (DataFormatter locale FR)
                 if (p0 >= 1 && p0 <= 31 && p1 >= 1 && p1 <= 12) {
-                    int year = p2 < 100 ? p2 + 2000 : p2;
+                    int year = p2 < 100 ? (p2 >= 30 ? p2 + 1900 : p2 + 2000) : p2;
                     return LocalDate.of(year, p1, p0);
                 }
                 // MM/dd/yyyy — format anglais résiduel (p0 > 12 impossible comme jour)
                 if (p1 > 12 && p0 >= 1 && p0 <= 12) {
-                    int year = p2 < 100 ? p2 + 2000 : p2;
+                    int year = p2 < 100 ? (p2 >= 30 ? p2 + 1900 : p2 + 2000) : p2;
                     return LocalDate.of(year, p0, p1);
                 }
             } catch (Exception ignored) {}
