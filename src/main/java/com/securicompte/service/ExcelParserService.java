@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.Locale;
 
 @Service
 @Slf4j
@@ -118,7 +119,7 @@ public class ExcelParserService {
                     XlsbRowCollector collector = new XlsbRowCollector(stopOnNomTotal, isListSheet);
                     XSSFBSheetHandler handler = new XSSFBSheetHandler(
                         sheetStream, styles, iter.getXSSFBSheetComments(),
-                        sst, collector, new DataFormatter(), false);
+                        sst, collector, new DataFormatter(Locale.FRANCE), false);
                     handler.parse();
                     log.info("Feuille '{}' — colonnes: {} — {} lignes valides",
                         sheetName, collector.getHeaders(), collector.getRows().size());
@@ -514,7 +515,7 @@ public class ExcelParserService {
         }
     }
 
-    private final DataFormatter dataFormatter = new DataFormatter();
+    private final DataFormatter dataFormatter = new DataFormatter(Locale.FRANCE);
 
     private Object parseCellValue(Cell cell) {
         if (cell == null) return null;
@@ -534,21 +535,25 @@ public class ExcelParserService {
 
     /** Tente de parser une chaîne en LocalDate selon les formats courants des fichiers Excel. */
     private LocalDate tryParseDate(String s) {
-        // dd/MM/yyyy ou dd/MM/yy
         String[] parts = s.split("[/\\-\\.]");
         if (parts.length == 3) {
             try {
                 int p0 = Integer.parseInt(parts[0].trim());
                 int p1 = Integer.parseInt(parts[1].trim());
                 int p2 = Integer.parseInt(parts[2].trim());
-                // jj/mm/aaaa ou jj/mm/aa (jour ≤ 31, mois ≤ 12)
+                // yyyy/MM/dd ou yyyy-MM-dd (ISO)
+                if (p0 > 31 && p1 >= 1 && p1 <= 12 && p2 >= 1 && p2 <= 31) {
+                    return LocalDate.of(p0, p1, p2);
+                }
+                // dd/MM/yyyy ou dd/MM/yy — format français (DataFormatter locale FR)
                 if (p0 >= 1 && p0 <= 31 && p1 >= 1 && p1 <= 12) {
                     int year = p2 < 100 ? p2 + 2000 : p2;
                     return LocalDate.of(year, p1, p0);
                 }
-                // aaaa/mm/jj (ISO avec séparateurs variés)
-                if (p0 > 31 && p1 >= 1 && p1 <= 12 && p2 >= 1 && p2 <= 31) {
-                    return LocalDate.of(p0, p1, p2);
+                // MM/dd/yyyy — format anglais résiduel (p0 > 12 impossible comme jour)
+                if (p1 > 12 && p0 >= 1 && p0 <= 12) {
+                    int year = p2 < 100 ? p2 + 2000 : p2;
+                    return LocalDate.of(year, p0, p1);
                 }
             } catch (Exception ignored) {}
         }
