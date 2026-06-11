@@ -2,6 +2,7 @@ package com.securicompte.controller;
 
 import com.securicompte.dto.ChangementClientDto;
 import com.securicompte.dto.ChangementPrimeDto;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutChangement;
 import com.securicompte.service.ImportService;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +11,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import com.securicompte.entity.User;
 import java.util.List;
@@ -73,5 +73,34 @@ public class ChangementsController {
                                                   @AuthenticationPrincipal User user) {
         importService.refuserChangement(id, user.getUsername());
         return java.util.Map.of("statut", "REFUSE");
+    }
+
+    @GetMapping("/clients")
+    @PreAuthorize("isAuthenticated()")
+    public String rechercherChangementsClient(
+            @RequestParam(required = false) String recherche,
+            @RequestParam(required = false) Integer annee,
+            @RequestParam(required = false) Integer mois,
+            @RequestParam(required = false) String champ,
+            @RequestParam(required = false) String reseau,
+            @RequestParam(defaultValue = "0") int page,
+            Model model) {
+        Reseau reseauEnum = (reseau != null && !reseau.isBlank()) ? Reseau.valueOf(reseau) : null;
+        var resultats = importService.rechercherChangementsClient(recherche, annee, mois, champ, reseauEnum, page);
+        model.addAttribute("resultats", resultats);
+        model.addAttribute("recherche", recherche != null ? recherche : "");
+        model.addAttribute("anneeFiltre", annee);
+        model.addAttribute("moisFiltre", mois);
+        model.addAttribute("champFiltre", champ != null ? champ : "");
+        model.addAttribute("reseauFiltre", reseau != null ? reseau : "");
+        model.addAttribute("anneesDisponibles", importService.getAnneesChangementsClient());
+        return "changements/clients";
+    }
+
+    @GetMapping("/clients/{clientId}/historique")
+    @PreAuthorize("isAuthenticated()")
+    @ResponseBody
+    public List<ChangementClientDto> getHistoriqueClient(@PathVariable Long clientId) {
+        return importService.getHistoriqueChangementsClient(clientId);
     }
 }

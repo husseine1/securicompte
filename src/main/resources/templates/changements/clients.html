@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Recherche changements client - Gestion des Impayés</title></head>
+<body>
+<section>
+
+  <input type="hidden" id="csrf-header" th:value="${_csrf.headerName}">
+  <input type="hidden" id="csrf-token"  th:value="${_csrf.token}">
+
+  <!-- En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="fw-bold mb-0">
+        <i class="fas fa-user-edit me-2 text-info"></i>Changements de données client
+      </h5>
+      <small class="text-muted">Recherche dans tout l'historique des modifications</small>
+    </div>
+    <a th:href="@{/changements}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Vue consolidée
+    </a>
+  </div>
+
+  <!-- Formulaire de recherche -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+      <form th:action="@{/changements/clients}" method="get" class="row g-2 align-items-end">
+        <!-- Recherche texte -->
+        <div class="col-md-3">
+          <label class="form-label form-label-sm mb-1 text-muted">Nom ou N° client</label>
+          <input type="text" name="recherche" class="form-control form-control-sm"
+                 placeholder="Rechercher..." th:value="${recherche}">
+        </div>
+        <!-- Réseau -->
+        <div class="col-md-2">
+          <label class="form-label form-label-sm mb-1 text-muted">Réseau</label>
+          <select name="reseau" class="form-select form-select-sm">
+            <option value="">Tous</option>
+            <option value="BNI" th:selected="${reseauFiltre == 'BNI'}">BNI</option>
+            <option value="SIB" th:selected="${reseauFiltre == 'SIB'}">SIB</option>
+          </select>
+        </div>
+        <!-- Année -->
+        <div class="col-md-2">
+          <label class="form-label form-label-sm mb-1 text-muted">Année</label>
+          <select name="annee" class="form-select form-select-sm">
+            <option value="">Toutes</option>
+            <option th:each="a : ${anneesDisponibles}" th:value="${a}" th:text="${a}"
+                    th:selected="${anneeFiltre == a}"></option>
+          </select>
+        </div>
+        <!-- Mois -->
+        <div class="col-md-2">
+          <label class="form-label form-label-sm mb-1 text-muted">Mois</label>
+          <select name="mois" class="form-select form-select-sm">
+            <option value="">Tous</option>
+            <option th:each="m : ${#numbers.sequence(1,12)}" th:value="${m}"
+                    th:text="${#strings.arrayJoin({{'Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'}[m-1]}, '')}"
+                    th:selected="${moisFiltre == m}"></option>
+          </select>
+        </div>
+        <!-- Champ modifié -->
+        <div class="col-md-2">
+          <label class="form-label form-label-sm mb-1 text-muted">Champ modifié</label>
+          <select name="champ" class="form-select form-select-sm">
+            <option value="">Tous</option>
+            <option value="nom"           th:selected="${champFiltre == 'nom'}">Nom</option>
+            <option value="agenceLib"     th:selected="${champFiltre == 'agenceLib'}">Agence</option>
+            <option value="gestionnaire"  th:selected="${champFiltre == 'gestionnaire'}">Gestionnaire</option>
+            <option value="zoneLib"       th:selected="${champFiltre == 'zoneLib'}">Zone</option>
+            <option value="dateNaissance" th:selected="${champFiltre == 'dateNaissance'}">Date de naissance</option>
+          </select>
+        </div>
+        <!-- Boutons -->
+        <div class="col-md-1">
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="fas fa-search"></i>
+          </button>
+        </div>
+        <div class="col-auto" th:if="${recherche != '' or reseauFiltre != '' or anneeFiltre != null or moisFiltre != null or champFiltre != ''}">
+          <a th:href="@{/changements/clients}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-times"></i>
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Résultats -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+      <span class="fw-semibold" style="font-size:13px">
+        <span th:text="${resultats.totalElements}"></span> résultat(s)
+        <span th:if="${resultats.totalPages > 1}" class="text-muted fw-normal">
+          — page <span th:text="${resultats.number + 1}"></span> / <span th:text="${resultats.totalPages}"></span>
+        </span>
+      </span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0" style="font-size:13px">
+          <thead class="table-light">
+            <tr>
+              <th>Période</th>
+              <th>Réseau</th>
+              <th>N° Client</th>
+              <th>Nom</th>
+              <th>Champ modifié</th>
+              <th>Valeur précédente</th>
+              <th>Nouvelle valeur</th>
+              <th>Détecté le</th>
+              <th>Historique</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="c : ${resultats.content}">
+              <td>
+                <span class="badge bg-secondary" th:text="${c.mois + '/' + c.annee}"></span>
+              </td>
+              <td>
+                <span class="badge"
+                      th:classappend="${c.reseau?.name() == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                      th:text="${c.reseau ?: 'BNI'}"></span>
+              </td>
+              <td class="fw-semibold" th:text="${c.numeroClient}"></td>
+              <td>
+                <a th:href="@{/clients/{id}(id=${c.clientId})}"
+                   class="text-decoration-none text-dark fw-semibold"
+                   th:text="${c.nomClient}"></a>
+              </td>
+              <td><span class="badge bg-secondary" th:text="${c.champLabel}"></span></td>
+              <td>
+                <span th:if="${c.valeurAvant != null}" class="text-danger" th:text="${c.valeurAvant}"></span>
+                <span th:if="${c.valeurAvant == null}" class="text-muted fst-italic">vide</span>
+              </td>
+              <td><span class="text-success fw-semibold" th:text="${c.valeurApres}"></span></td>
+              <td style="font-size:11px"
+                  th:text="${c.dateDetection != null ? #temporals.format(c.dateDetection,'dd/MM/yyyy') : '—'}"></td>
+              <td>
+                <button type="button" class="btn btn-sm btn-outline-info py-0 px-2"
+                        th:attr="data-client-id=${c.clientId}, data-client-nom=${c.nomClient}"
+                        onclick="voirHistorique(this)"
+                        title="Voir tout l'historique de ce client">
+                  <i class="fas fa-history"></i>
+                </button>
+              </td>
+            </tr>
+            <tr th:if="${resultats.empty}">
+              <td colspan="9" class="text-center text-muted py-5">
+                <i class="fas fa-search fa-3x mb-2 d-block text-secondary"></i>
+                Aucun résultat pour ces critères.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="card-footer bg-white py-2" th:if="${resultats.totalPages > 1}">
+      <nav>
+        <ul class="pagination pagination-sm mb-0 justify-content-center">
+          <li class="page-item" th:classappend="${resultats.first} ? 'disabled'">
+            <a class="page-link"
+               th:href="@{/changements/clients(recherche=${recherche},reseau=${reseauFiltre},annee=${anneeFiltre},mois=${moisFiltre},champ=${champFiltre},page=${resultats.number - 1})}">
+              &laquo;
+            </a>
+          </li>
+          <li th:each="i : ${#numbers.sequence(0, resultats.totalPages - 1)}"
+              th:if="${i >= resultats.number - 2 and i <= resultats.number + 2}"
+              class="page-item" th:classappend="${i == resultats.number} ? 'active'">
+            <a class="page-link"
+               th:href="@{/changements/clients(recherche=${recherche},reseau=${reseauFiltre},annee=${anneeFiltre},mois=${moisFiltre},champ=${champFiltre},page=${i})}"
+               th:text="${i + 1}"></a>
+          </li>
+          <li class="page-item" th:classappend="${resultats.last} ? 'disabled'">
+            <a class="page-link"
+               th:href="@{/changements/clients(recherche=${recherche},reseau=${reseauFiltre},annee=${anneeFiltre},mois=${moisFiltre},champ=${champFiltre},page=${resultats.number + 1})}">
+              &raquo;
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Modal historique client -->
+  <div class="modal fade" id="modalHistorique" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold">
+            <i class="fas fa-history me-2 text-info"></i>
+            Historique des changements — <span id="modal-client-nom"></span>
+          </h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div id="modal-loading" class="text-center py-4 text-muted">
+            <i class="fas fa-spinner fa-spin me-2"></i>Chargement...
+          </div>
+          <div id="modal-content" style="display:none">
+            <table class="table table-sm table-hover mb-0" style="font-size:13px">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>Période</th>
+                  <th>Champ</th>
+                  <th>Valeur précédente</th>
+                  <th>Nouvelle valeur</th>
+                  <th>Détecté le</th>
+                </tr>
+              </thead>
+              <tbody id="modal-tbody"></tbody>
+            </table>
+          </div>
+          <div id="modal-empty" style="display:none" class="text-center py-5 text-muted">
+            <i class="fas fa-check-circle fa-2x mb-2 d-block text-success"></i>
+            Aucun changement enregistré pour ce client.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <a id="modal-link-fiche" href="#" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-user me-1"></i>Fiche client
+          </a>
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script th:inline="javascript">
+  /*<![CDATA[*/
+  const CHAMPS_LABELS = {
+    'nom': 'Nom', 'agenceLib': 'Agence', 'gestionnaire': 'Gestionnaire',
+    'zoneLib': 'Zone', 'dateNaissance': 'Date naissance'
+  };
+
+  function voirHistorique(btn) {
+    const clientId  = btn.dataset.clientId;
+    const clientNom = btn.dataset.clientNom;
+    document.getElementById('modal-client-nom').textContent = clientNom;
+    document.getElementById('modal-link-fiche').href = '/clients/' + clientId;
+    document.getElementById('modal-loading').style.display = 'block';
+    document.getElementById('modal-content').style.display = 'none';
+    document.getElementById('modal-empty').style.display   = 'none';
+
+    new bootstrap.Modal(document.getElementById('modalHistorique')).show();
+
+    fetch('/changements/clients/' + clientId + '/historique', {
+      headers: {
+        [document.getElementById('csrf-header').value]: document.getElementById('csrf-token').value
+      }
+    })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('modal-loading').style.display = 'none';
+      if (!data || data.length === 0) {
+        document.getElementById('modal-empty').style.display = 'block';
+        return;
+      }
+      const tbody = document.getElementById('modal-tbody');
+      tbody.innerHTML = '';
+      data.forEach(c => {
+        const tr = document.createElement('tr');
+        const champLabel = CHAMPS_LABELS[c.champ] || c.champ;
+        const avant  = c.valeurAvant  ? `<span class="text-danger">${c.valeurAvant}</span>`  : '<span class="text-muted fst-italic">vide</span>';
+        const apres  = `<span class="text-success fw-semibold">${c.valeurApres}</span>`;
+        const date   = c.dateDetection ? c.dateDetection.substring(0,10).split('-').reverse().join('/') : '—';
+        const reseau = c.reseau === 'SIB'
+          ? '<span class="badge bg-info text-dark">SIB</span>'
+          : '<span class="badge bg-dark">BNI</span>';
+        tr.innerHTML = `
+          <td><span class="badge bg-secondary">${c.mois}/${c.annee}</span> ${reseau}</td>
+          <td><span class="badge bg-secondary">${champLabel}</span></td>
+          <td>${avant}</td>
+          <td>${apres}</td>
+          <td style="font-size:11px">${date}</td>`;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('modal-content').style.display = 'block';
+    })
+    .catch(() => {
+      document.getElementById('modal-loading').style.display = 'none';
+      document.getElementById('modal-empty').style.display   = 'block';
+    });
+  }
+  /*]]>*/
+  </script>
+
+</section>
+</body>
+</html>

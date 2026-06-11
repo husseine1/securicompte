@@ -810,6 +810,28 @@ public class ImportService {
             .stream().map(this::toChangementClientDto).collect(Collectors.toList());
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<ChangementClientDto> rechercherChangementsClient(
+            String recherche, Integer annee, Integer mois, String champ, Reseau reseau, int page) {
+        String param = (recherche != null && !recherche.isBlank())
+            ? "%" + recherche.trim().toLowerCase() + "%" : null;
+        return changementClientRepository.searchWithFilters(
+            param, annee, mois, champ, reseau,
+            org.springframework.data.domain.PageRequest.of(page, 25))
+            .map(this::toChangementClientDto);
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<ChangementClientDto> getHistoriqueChangementsClient(Long clientId) {
+        return changementClientRepository.findByClientId(clientId)
+            .stream().map(this::toChangementClientDto).collect(Collectors.toList());
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<Integer> getAnneesChangementsClient() {
+        return changementClientRepository.findDistinctAnnees();
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private ChangementPrimeDto toChangementDto(ChangementPrime c) {
