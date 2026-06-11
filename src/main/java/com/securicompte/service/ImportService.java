@@ -1,7 +1,6 @@
 package com.securicompte.service;
 
 import com.securicompte.dto.ChangementClientDto;
-import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.dto.ImportResultDto;
 import com.securicompte.entity.*;
 import com.securicompte.enums.Reseau;
@@ -39,7 +38,6 @@ public class ImportService {
     private final SouscriptionRepository        souscriptionRepository;
     private final StockMensuelRepository        stockMensuelRepository;
     private final ImpayeRepository              impayeRepository;
-    private final ChangementPrimeRepository     changementPrimeRepository;
     private final ChangementClientRepository    changementClientRepository;
     private final PlatformTransactionManager    transactionManager;
 
@@ -189,16 +187,7 @@ public class ImportService {
             log.info("Import terminé avec succès: Nouvelles={}, Anciennes={}, Stock={}, Impayés={}, Erreurs={}",
                 c[0], c[1], c[2], c[3], c[4]);
 
-            // Tx4 : détecter les changements de prime (non bloquant — ne remet pas en cause l'import)
-            try {
-                final String username = importePar.getUsername();
-                tx.execute(status -> {
-                    detecterChangementsPrimeImport(annee, mois, username);
-                    return null;
-                });
-            } catch (Exception e) {
-                log.warn("Détection changements de prime non complétée (non bloquant) : {}", e.getMessage());
-            }
+
 
             // Tx5 : notifier les changements de données client (non bloquant)
             try {
@@ -501,85 +490,8 @@ public class ImportService {
         log.info("Suppression bulk stock import #{}", importFichierId);
         souscriptionRepository.deleteByImportFichierId(importFichierId);
         log.info("Suppression bulk des souscriptions de l'import #{}", importFichierId);
-        changementPrimeRepository.deleteByAnneeAndMois(annee, mois);
-        log.info("Suppression changements de prime {}/{}", mois, annee);
         changementClientRepository.deleteByAnneeAndMois(annee, mois);
         log.info("Suppression changements client {}/{}", mois, annee);
-    }
-
-    /**
-     * Détecte et persiste les changements de prime pour le mois importé.
-     * Chaque changement est stocké en base (statut EN_ATTENTE) pour approbation/refus.
-     */
-    private void detecterChangementsPrimeImport(int annee, int mois, String importePar) {
-
-        List<StockMensuel> stocksCourants = stockMensuelRepository.findByAnneeAndMoisWithClient(annee, mois);
-        if (stocksCourants.isEmpty()) return;
-
-        List<Long> clientIds = stocksCourants.stream()
-            .map(s -> s.getClient().getId()).distinct().collect(Collectors.toList());
-
-        Map<Long, Souscription> souscriptionParClient = new HashMap<>();
-        int batchSize = 1000;
-        for (int i = 0; i < clientIds.size(); i += batchSize) {
-            List<Long> batch = clientIds.subList(i, Math.min(i + batchSize, clientIds.size()));
-            souscriptionRepository.findAllByClientIdsOrderByDateDesc(batch)
-                .forEach(s -> souscriptionParClient.putIfAbsent(s.getClient().getId(), s));
-        }
-
-        List<ChangementPrime> aCreer = new ArrayList<>();
-        List<String> exemples = new ArrayList<>();
-        LocalDateTime now = java.time.LocalDateTime.now();
-
-        for (StockMensuel stock : stocksCourants) {
-            Souscription souscription = souscriptionParClient.get(stock.getClient().getId());
-            if (souscription == null) continue;
-
-            boolean scChange   = !java.util.Objects.equals(souscription.getSecuricompte(), stock.getSecuricompte());
-            boolean commChange = !bdEgal(souscription.getCommissions(), stock.getCommissions());
-
-            if (scChange || commChange) {
-                aCreer.add(ChangementPrime.builder()
-                    .client(stock.getClient())
-                    .annee(annee).mois(mois)
-                    .securicompteAvant(souscription.getSecuricompte())
-                    .securicompteApres(stock.getSecuricompte())
-                    .commissionsAvant(souscription.getCommissions())
-                    .commissionsApres(stock.getCommissions())
-                    .datSouscription(souscription.getDatSouscription())
-                    .statut(StatutChangement.EN_ATTENTE)
-                    .dateDetection(now)
-                    .build());
-
-                if (exemples.size() < 5) {
-                    exemples.add(String.format("%s (SC: %s→%s | Com: %s→%s)",
-                        stock.getClient().getNom(),
-                        nvl(souscription.getSecuricompte()), nvl(stock.getSecuricompte()),
-                        nvl(souscription.getCommissions()), nvl(stock.getCommissions())));
-                }
-            }
-        }
-
-        if (!aCreer.isEmpty()) {
-            changementPrimeRepository.saveAll(aCreer);
-            String details = "Exemples : " + String.join(" | ", exemples)
-                + (aCreer.size() > exemples.size()
-                    ? String.format(" … et %d autre(s).", aCreer.size() - exemples.size()) : ".");
-            notificationService.creerNotificationChangementPrimeImport(
-                annee, mois, aCreer.size(), details, importePar);
-        }
-
-        log.info("Détection prime {}/{} : {} changement(s) persistés (EN_ATTENTE)", mois, annee, aCreer.size());
-    }
-
-    private String nvl(Object o) {
-        return o != null ? o.toString() : "N/A";
-    }
-
-    private boolean bdEgal(java.math.BigDecimal a, java.math.BigDecimal b) {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        return a.compareTo(b) == 0;
     }
 
     public ImportFichier getImportById(Long id) {
@@ -619,7 +531,6 @@ public class ImportService {
                 impayeRepository.deleteByAnneeAndMoisAndReseau(annee, mois, reseau);
                 stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
                 souscriptionRepository.deleteByImportFichierId(importId);
-                changementPrimeRepository.deleteByAnneeAndMois(annee, mois);
                 changementClientRepository.deleteByAnneeAndMois(annee, mois);
                 importFichierRepository.deleteDirectById(importId);
                 int orphelins = clientRepository.deleteOrphanClients();
@@ -644,14 +555,6 @@ public class ImportService {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public java.util.Map<String, Long> getNbPrimeEnAttenteParMois() {
-        java.util.Map<String, Long> map = new java.util.HashMap<>();
-        changementPrimeRepository.countByStatutGroupedByMois(StatutChangement.EN_ATTENTE)
-            .forEach(r -> map.put(r[0] + "-" + r[1], (Long) r[2]));
-        return map;
-    }
-
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public java.util.Map<String, Long> getNbChangementsClientParMois() {
         java.util.Map<String, Long> map = new java.util.HashMap<>();
         changementClientRepository.countGroupedByMois()
@@ -662,75 +565,6 @@ public class ImportService {
     @org.springframework.transaction.annotation.Transactional
     public int purgerClientsOrphelins() {
         return clientRepository.deleteOrphanClients();
-    }
-
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public List<ChangementPrimeDto> getChangementsPrime(int annee, int mois) {
-        return changementPrimeRepository.findByAnneeAndMoisWithClient(annee, mois)
-            .stream().map(this::toChangementDto).collect(Collectors.toList());
-    }
-
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public List<ChangementPrimeDto> getChangementsEnAttente() {
-        return changementPrimeRepository.findByStatutWithClient(StatutChangement.EN_ATTENTE)
-            .stream().map(this::toChangementDto).collect(Collectors.toList());
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public void approuverChangement(Long id, String username) {
-        ChangementPrime c = changementPrimeRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Changement introuvable : " + id));
-        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
-
-        List<Souscription> sousc = souscriptionRepository.findByClientIdOrderByDatSouscriptionAsc(c.getClient().getId());
-        if (!sousc.isEmpty()) {
-            Souscription derniere = sousc.get(sousc.size() - 1);
-            derniere.setSecuricompte(c.getSecuricompteApres());
-            derniere.setCommissions(c.getCommissionsApres());
-            souscriptionRepository.save(derniere);
-        }
-
-        c.setStatut(StatutChangement.APPROUVE);
-        c.setDateDecision(java.time.LocalDateTime.now());
-        c.setDecidePar(username);
-        changementPrimeRepository.save(c);
-        log.info("Changement prime {} approuvé par {}", id, username);
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public void refuserChangement(Long id, String username) {
-        ChangementPrime c = changementPrimeRepository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Changement introuvable : " + id));
-        if (c.getStatut() != StatutChangement.EN_ATTENTE) return;
-
-        c.setStatut(StatutChangement.REFUSE);
-        c.setDateDecision(java.time.LocalDateTime.now());
-        c.setDecidePar(username);
-        changementPrimeRepository.save(c);
-        log.info("Changement prime {} refusé par {}", id, username);
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public int approuverTousChangements(int annee, int mois, String username) {
-        List<ChangementPrime> enAttente = changementPrimeRepository
-            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
-        enAttente.forEach(c -> approuverChangement(c.getId(), username));
-        return enAttente.size();
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    public int refuserTousChangements(int annee, int mois, String username) {
-        List<ChangementPrime> enAttente = changementPrimeRepository
-            .findByAnneeAndMoisAndStatutWithClient(annee, mois, StatutChangement.EN_ATTENTE);
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        enAttente.forEach(c -> {
-            c.setStatut(StatutChangement.REFUSE);
-            c.setDateDecision(now);
-            c.setDecidePar(username);
-        });
-        changementPrimeRepository.saveAll(enAttente);
-        log.info("{} changements de prime refusés en bloc pour {}/{}", enAttente.size(), mois, annee);
-        return enAttente.size();
     }
 
     // ─── Fichiers Excel stockés ───────────────────────────────────────────────
@@ -834,27 +668,4 @@ public class ImportService {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private ChangementPrimeDto toChangementDto(ChangementPrime c) {
-        Client cl = c.getClient();
-        return ChangementPrimeDto.builder()
-            .id(c.getId())
-            .annee(c.getAnnee())
-            .mois(c.getMois())
-            .reseau(cl.getReseau())
-            .clientId(cl.getId())
-            .numeroClient(cl.getNumeroClient())
-            .nomClient(cl.getNom())
-            .agenceLib(cl.getAgenceLib())
-            .gestionnaire(cl.getGestionnaire())
-            .dateSouscription(c.getDatSouscription())
-            .securicompteAvant(c.getSecuricompteAvant())
-            .securicompteApres(c.getSecuricompteApres())
-            .commissionsAvant(c.getCommissionsAvant())
-            .commissionsApres(c.getCommissionsApres())
-            .statut(c.getStatut())
-            .dateDetection(c.getDateDetection())
-            .dateDecision(c.getDateDecision())
-            .decidePar(c.getDecidePar())
-            .build();
-    }
 }

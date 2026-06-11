@@ -47,25 +47,11 @@
 
               <!-- Type -->
               <td>
-                <span th:if="${n.type == 'CHANGEMENT_PRIME'}"
-                      class="badge bg-warning text-dark">
-                  <i class="fas fa-exchange-alt me-1"></i>Changement prime
-                </span>
-                <span th:if="${n.type == 'CHANGEMENT_PRIME_IMPORT'}">
-                  <span class="badge bg-info text-dark">
-                    <i class="fas fa-file-import me-1"></i>Changement prime import
-                  </span>
-                  <a th:if="${n.anneeImpaye != null and n.moisImpaye != null}"
-                     th:href="@{/import/{annee}/{mois}/changements-prime(annee=${n.anneeImpaye},mois=${n.moisImpaye})}"
-                     class="btn btn-sm btn-outline-info py-0 px-1 ms-1" title="Voir le détail des clients">
-                    <i class="fas fa-list"></i>
-                  </a>
-                </span>
                 <span th:if="${n.type == 'IMPAYE_ANCIEN'}"
                       class="badge bg-danger">
                   <i class="fas fa-exclamation-circle me-1"></i>Impayé ancien
                 </span>
-                <span th:if="${n.type != 'CHANGEMENT_PRIME' and n.type != 'CHANGEMENT_PRIME_IMPORT' and n.type != 'IMPAYE_ANCIEN'}"
+                <span th:if="${n.type != 'IMPAYE_ANCIEN'}"
                       class="badge bg-secondary" th:text="${n.type}"></span>
               </td>
 

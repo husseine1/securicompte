@@ -2,12 +2,10 @@ package com.securicompte.service;
 
 import com.securicompte.dto.*;
 import com.securicompte.entity.Impaye;
-import com.securicompte.entity.StockMensuel;
 import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.repository.ImpayeRepository;
 import com.securicompte.repository.ImportFichierRepository;
-import com.securicompte.repository.StockMensuelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -15,12 +13,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,9 +25,7 @@ public class ImpayeService {
 
     private final ImpayeRepository       impayeRepository;
     private final ClientService          clientService;
-    private final StockMensuelRepository stockMensuelRepository;
     private final ImportFichierRepository importFichierRepository;
-    private final NotificationService    notificationService;
 
     @Transactional(readOnly = true)
     public Page<ImpayeDto> getImpaYesWithFilters(FiltreImpayeDto filtre) {
@@ -76,39 +69,6 @@ public class ImpayeService {
         double tauxReg = totalComptable > 0 ? totalRegularises * 100.0 / totalComptable : 0.0;
         long totalClientsAvecImpayes = impayeRepository.countClientsAvecImpayes();
 
-        // Impayés par mois filtrés par réseau
-        List<StatMoisDto> statsParMois = impayeRepository.countImpaYesParMoisByReseau(reseau).stream()
-            .limit(12)
-            .filter(row -> row[0] != null && row[1] != null)
-            .map(row -> StatMoisDto.builder()
-                .annee(((Number) row[0]).intValue())
-                .mois(((Number) row[1]).intValue())
-                .moisNom(getMoisNom(((Number) row[1]).intValue()))
-                .nbImpayes(row[2] != null ? ((Number) row[2]).longValue() : 0L)
-                .build())
-            .collect(Collectors.toList());
-
-        // Évolution du stock par mois (depuis import_fichier)
-        List<StatMoisDto> stockParMois = importFichierRepository.findStockEvolution(reseau).stream()
-            .map(row -> StatMoisDto.builder()
-                .annee(((Number) row[0]).intValue())
-                .mois(((Number) row[1]).intValue())
-                .moisNom(getMoisNom(((Number) row[1]).intValue()))
-                .nbStock(row[2] != null ? ((Number) row[2]).longValue() : 0L)
-                .nbNouvelles(row[3] != null ? ((Number) row[3]).longValue() : 0L)
-                .nbAnciennes(row[4] != null ? ((Number) row[4]).longValue() : 0L)
-                .build())
-            .collect(Collectors.toList());
-
-        List<StatAgenceDto> statsParAgence = impayeRepository.countImpaYesParAgenceByReseau(null, reseau).stream()
-            .limit(10)
-            .filter(row -> row[1] != null)
-            .map(row -> StatAgenceDto.builder()
-                .agence(row[0] != null ? row[0].toString() : "Non défini")
-                .nbImpayes(((Number) row[1]).longValue())
-                .build())
-            .collect(Collectors.toList());
-
         List<Top10ClientDto> top10 = impayeRepository
             .findClientsAvecPlusImpayes(StatutImpaye.IMPAYE, reseau).stream()
             .limit(10)
@@ -124,9 +84,6 @@ public class ImpayeService {
             .totalRegularises(totalRegularises)
             .tauxRegularisation(tauxReg)
             .totalClientsAvecImpayes(totalClientsAvecImpayes)
-            .statsParMois(statsParMois)
-            .stockParMois(stockParMois)
-            .statsParAgence(statsParAgence)
             .top10Clients(top10)
             .build();
     }
@@ -139,40 +96,8 @@ public class ImpayeService {
             impaye.setCommentaire(commentaire);
             impaye.setRegularisePar(regularisePar);
             impayeRepository.save(impaye);
-            detecterChangementPrime(impaye, regularisePar.getUsername());
             return true;
         }).orElse(false);
-    }
-
-    /**
-     * Compare la prime du mois de l'impayé avec celle du mois de régularisation.
-     * Si une différence est détectée, crée une notification pour l'admin.
-     */
-    private void detecterChangementPrime(Impaye impaye, String username) {
-        Long clientId = impaye.getClient().getId();
-        LocalDate aujourd = LocalDate.now();
-
-        Optional<StockMensuel> stockOriginalOpt = stockMensuelRepository
-                .findByClientIdAndAnneeAndMois(clientId, impaye.getAnnee(), impaye.getMois());
-        Optional<StockMensuel> stockActuelOpt = stockMensuelRepository
-                .findByClientIdAndAnneeAndMois(clientId, aujourd.getYear(), aujourd.getMonthValue());
-
-        if (stockOriginalOpt.isEmpty() || stockActuelOpt.isEmpty()) {
-            // Pas assez de données pour comparer
-            return;
-        }
-
-        StockMensuel orig = stockOriginalOpt.get();
-        StockMensuel actu = stockActuelOpt.get();
-
-        boolean securicompteChange = !Objects.equals(orig.getSecuricompte(), actu.getSecuricompte());
-        boolean commissionsChange  = orig.getCommissions() != null && actu.getCommissions() != null
-                ? orig.getCommissions().compareTo(actu.getCommissions()) != 0
-                : !Objects.equals(orig.getCommissions(), actu.getCommissions());
-
-        if (securicompteChange || commissionsChange) {
-            notificationService.creerNotificationChangementPrime(impaye, orig, actu, username);
-        }
     }
 
     @Transactional

@@ -105,53 +105,6 @@
     </div>
   </div>
 
-  <div class="row g-3 mb-3">
-    <!-- Graphique stock par mois -->
-    <div class="col-lg-8">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white border-0 pt-3">
-          <h6 class="mb-0 fw-bold"><i class="fas fa-chart-line me-2 text-success"></i>Évolution du stock par mois</h6>
-        </div>
-        <div class="card-body"><canvas id="stockChart" height="90"></canvas></div>
-      </div>
-    </div>
-
-    <!-- Graphique impayés par mois -->
-    <div class="col-lg-4">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white border-0 pt-3">
-          <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar me-2 text-danger"></i>Impayés par mois</h6>
-        </div>
-        <div class="card-body"><canvas id="impayesChart" height="180"></canvas></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3 mb-3">
-    <!-- Impayés par agence -->
-    <div class="col-lg-4">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-header bg-white border-0 pt-3">
-          <h6 class="mb-0 fw-bold"><i class="fas fa-building me-2 text-warning"></i>Top agences impayées</h6>
-        </div>
-        <div class="card-body p-0">
-          <div th:if="${stats?.statsParAgence != null and !stats.statsParAgence.empty}"
-               class="list-group list-group-flush">
-            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3"
-                 th:each="s : ${stats.statsParAgence}">
-              <span class="text-truncate me-2" style="font-size:13px" th:text="${s.agence ?: 'N/A'}"></span>
-              <span class="badge bg-danger rounded-pill" th:text="${s.nbImpayes}"></span>
-            </div>
-          </div>
-          <div th:if="${stats?.statsParAgence == null or stats.statsParAgence.empty}"
-               class="text-center py-4 text-muted">
-            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>Aucune donnée
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="row g-3">
     <!-- Top 10 clients avec le plus d'impayés -->
     <div class="col-lg-6">
@@ -225,79 +178,6 @@
     </div>
   </div>
 
-  <script th:inline="javascript">
-  /*<![CDATA[*/
-  const MOIS = ["","Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-
-  // ─── Graphique stock par mois ──────────────────────────────────────────────
-  const stockParMois = /*[[${stats?.stockParMois}]]*/ [];
-  if (stockParMois && stockParMois.length > 0) {
-    const labels = stockParMois.map(s => MOIS[s.mois] + " " + s.annee);
-    new Chart(document.getElementById("stockChart"), {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "Stock total",
-            data: stockParMois.map(s => s.nbStock),
-            borderColor: "#1d4ed8", backgroundColor: "rgba(29,78,216,.1)",
-            tension: 0.3, fill: true, borderWidth: 2, pointRadius: 3
-          },
-          {
-            label: "Nouvelles",
-            data: stockParMois.map(s => s.nbNouvelles),
-            borderColor: "#16a34a", backgroundColor: "transparent",
-            tension: 0.3, borderWidth: 2, pointRadius: 3, borderDash: [4,4]
-          },
-          {
-            label: "Anciennes",
-            data: stockParMois.map(s => s.nbAnciennes),
-            borderColor: "#9333ea", backgroundColor: "transparent",
-            tension: 0.3, borderWidth: 2, pointRadius: 3, borderDash: [2,2]
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: "top" } },
-        scales: { y: { beginAtZero: false, ticks: { callback: v => v.toLocaleString() } } }
-      }
-    });
-  } else {
-    const el = document.getElementById("stockChart");
-    if (el) el.parentElement.innerHTML =
-      '<div class="text-center text-muted py-4"><i class="fas fa-chart-line fa-3x mb-2 d-block"></i>Aucune donnée de stock</div>';
-  }
-
-  // ─── Graphique impayés par mois ────────────────────────────────────────────
-  const statsParMois = /*[[${stats?.statsParMois}]]*/ [];
-  if (statsParMois && statsParMois.length > 0) {
-    const labels = statsParMois.map(s => MOIS[s.mois] + " " + s.annee);
-    new Chart(document.getElementById("impayesChart"), {
-      type: "bar",
-      data: {
-        labels: labels,
-        datasets: [{
-          label: "Impayés",
-          data: statsParMois.map(s => s.nbImpayes),
-          backgroundColor: "rgba(220,53,69,.7)",
-          borderColor: "#dc3545",
-          borderWidth: 1, borderRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-      }
-    });
-  } else {
-    document.getElementById("impayesChart").parentElement.innerHTML =
-      '<div class="text-center text-muted py-4"><i class="fas fa-chart-bar fa-3x mb-2 d-block"></i>Aucune donnée à afficher</div>';
-  }
-  /*]]>*/
-  </script>
 </section>
 </body>
 </html>

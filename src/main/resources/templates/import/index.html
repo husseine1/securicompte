@@ -180,18 +180,6 @@
                        class="btn btn-sm btn-outline-primary py-0 px-2" title="Voir le détail">
                       <i class="fas fa-eye"></i>
                     </a>
-                    <!-- Changements de prime -->
-                    <th:block th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
-                              th:with="k=|${imp.annee}-${imp.mois}|">
-                      <a th:href="@{/import/{a}/{m}/changements-prime(a=${imp.annee},m=${imp.mois})}"
-                         class="btn btn-sm btn-outline-warning py-0 px-2 position-relative" title="Changements de prime">
-                        <i class="fas fa-exchange-alt"></i>
-                        <span th:if="${nbPrimeEnAttente.containsKey(k) and nbPrimeEnAttente.get(k) > 0}"
-                              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-                              style="font-size:9px;min-width:16px"
-                              th:text="${nbPrimeEnAttente.get(k)}"></span>
-                      </a>
-                    </th:block>
                     <!-- Changements données client -->
                     <th:block th:if="${imp.statut.name() == 'SUCCES' or imp.statut.name() == 'PARTIEL'}"
                               th:with="k=|${imp.annee}-${imp.mois}|">
