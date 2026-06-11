@@ -34,4 +34,8 @@ public interface SouscriptionRepository extends JpaRepository<Souscription, Long
      */
     @Query("SELECT s FROM Souscription s JOIN FETCH s.client c WHERE c.id IN :clientIds ORDER BY s.datSouscription DESC")
     List<Souscription> findAllByClientIdsOrderByDateDesc(@Param("clientIds") List<Long> clientIds);
+
+    /** Retourne le minimum de dat_souscription par client pour un import donné. */
+    @Query("SELECT s.client.id, MIN(s.datSouscription) FROM Souscription s WHERE s.importFichier.id = :importFichierId GROUP BY s.client.id")
+    List<Object[]> findDatSouscriptionByImportFichierId(@Param("importFichierId") Long importFichierId);
 }

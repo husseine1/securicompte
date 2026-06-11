@@ -123,6 +123,10 @@ public interface ImpayeRepository extends JpaRepository<Impaye, Long> {
     @Query("DELETE FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois")
     void deleteByAnneeAndMois(@Param("annee") Integer annee, @Param("mois") Integer mois);
 
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("DELETE FROM Impaye i WHERE i.annee = :annee AND i.mois = :mois AND i.client.id IN (SELECT c.id FROM Client c WHERE c.reseau = :reseau)")
+    void deleteByAnneeAndMoisAndReseau(@Param("annee") Integer annee, @Param("mois") Integer mois, @Param("reseau") Reseau reseau);
+
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

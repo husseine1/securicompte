@@ -1,5 +1,6 @@
 package com.securicompte.dto;
 
+import com.securicompte.enums.Reseau;
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,6 +10,9 @@ import java.time.LocalDateTime;
 @Builder
 public class ChangementClientDto {
     private Long id;
+    private Integer annee;
+    private Integer mois;
+    private Reseau reseau;
     private Long clientId;
     private String numeroClient;
     private String nomClient;

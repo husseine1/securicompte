@@ -1,5 +1,6 @@
 package com.securicompte.dto;
 
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutChangement;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +13,9 @@ import java.time.LocalDateTime;
 @Builder
 public class ChangementPrimeDto {
     private Long id;
+    private Integer annee;
+    private Integer mois;
+    private Reseau reseau;
     private Long clientId;
     private String numeroClient;
     private String nomClient;

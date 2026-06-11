@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{fragments/layout :: layout(~{::title}, ~{::section})}">
+<head><title>Changements en attente - Gestion des Impayés</title></head>
+<body>
+<section>
+
+  <input type="hidden" id="csrf-token" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+  <input type="hidden" id="csrf-header" th:value="${_csrf.headerName}">
+
+  <!-- En-tête -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="fw-bold mb-0">
+        <i class="fas fa-bell me-2 text-warning"></i>Vue consolidée des changements
+        <span th:if="${nbEnAttente > 0}"
+              class="badge bg-danger ms-2" th:text="${nbEnAttente + ' en attente'}"></span>
+      </h5>
+      <small class="text-muted">Tous les mois confondus</small>
+    </div>
+    <!-- Filtre réseau -->
+    <div class="d-flex gap-2">
+      <a th:href="@{/changements}" th:classappend="${reseauFiltre == ''} ? 'btn-primary' : 'btn-outline-secondary'"
+         class="btn btn-sm">Tous</a>
+      <a th:href="@{/changements(reseau=BNI)}" th:classappend="${reseauFiltre == 'BNI'} ? 'btn-dark' : 'btn-outline-dark'"
+         class="btn btn-sm">BNI</a>
+      <a th:href="@{/changements(reseau=SIB)}" th:classappend="${reseauFiltre == 'SIB'} ? 'btn-info' : 'btn-outline-info'"
+         class="btn btn-sm">SIB</a>
+    </div>
+  </div>
+
+  <!-- Onglets -->
+  <ul class="nav nav-tabs mb-3" id="changementsTabs">
+    <li class="nav-item">
+      <a class="nav-link active" data-bs-toggle="tab" href="#tab-prime">
+        <i class="fas fa-exchange-alt me-1 text-warning"></i>
+        Changements de prime
+        <span class="badge bg-warning text-dark ms-1" th:text="${primes.size()}"></span>
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="tab" href="#tab-client">
+        <i class="fas fa-user-edit me-1 text-info"></i>
+        Changements données client
+        <span class="badge bg-info text-dark ms-1" th:text="${changementsClient.size()}"></span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ─── Onglet Changements de prime ────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="tab-prime">
+
+      <!-- Actions groupées -->
+      <div sec:authorize="hasRole('ROLE_ADMIN')" class="d-flex gap-2 mb-3" th:if="${nbEnAttente > 0}">
+        <button class="btn btn-sm btn-success" onclick="approuverTous()">
+          <i class="fas fa-check-double me-1"></i>Approuver tous les EN_ATTENTE
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="refuserTous()">
+          <i class="fas fa-times-circle me-1"></i>Refuser tous les EN_ATTENTE
+        </button>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" style="font-size:13px">
+              <thead class="table-light">
+                <tr>
+                  <th>Période</th>
+                  <th>Réseau</th>
+                  <th>N° Client</th>
+                  <th>Nom</th>
+                  <th>Agence</th>
+                  <th>Securicompte (avant → après)</th>
+                  <th>Commissions (avant → après)</th>
+                  <th>Statut</th>
+                  <th>Décision</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr th:each="c : ${primes}" th:id="'row-' + ${c.id}">
+                  <td>
+                    <span class="badge bg-secondary"
+                          th:text="${c.mois + '/' + c.annee}"></span>
+                  </td>
+                  <td>
+                    <span class="badge"
+                          th:classappend="${c.reseau?.name() == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                          th:text="${c.reseau ?: 'BNI'}"></span>
+                  </td>
+                  <td class="fw-semibold" th:text="${c.numeroClient}"></td>
+                  <td th:text="${c.nomClient}"></td>
+                  <td><small class="text-muted" th:text="${c.agenceLib ?: '—'}"></small></td>
+                  <td class="text-nowrap">
+                    <span class="text-danger" th:text="${c.securicompteAvant ?: 'N/A'}"></span>
+                    <i class="fas fa-arrow-right text-muted mx-1" style="font-size:10px"></i>
+                    <span class="text-success fw-semibold" th:text="${c.securicompteApres ?: 'N/A'}"></span>
+                  </td>
+                  <td class="text-nowrap">
+                    <span class="text-danger" th:text="${c.commissionsAvant ?: 'N/A'}"></span>
+                    <i class="fas fa-arrow-right text-muted mx-1" style="font-size:10px"></i>
+                    <span class="text-success fw-semibold" th:text="${c.commissionsApres ?: 'N/A'}"></span>
+                  </td>
+                  <td>
+                    <span th:id="'badge-' + ${c.id}" class="badge"
+                          th:classappend="${c.statut?.name() == 'APPROUVE'} ? 'bg-success' :
+                                          (${c.statut?.name() == 'REFUSE'} ? 'bg-danger' : 'bg-warning text-dark')"
+                          th:text="${c.statut?.name() == 'EN_ATTENTE' ? 'En attente' :
+                                    (c.statut?.name() == 'APPROUVE' ? 'Approuvé' : 'Refusé')}"></span>
+                  </td>
+                  <td style="font-size:11px" th:id="'dec-' + ${c.id}">
+                    <span th:if="${c.dateDecision != null}">
+                      <span th:text="${#temporals.format(c.dateDecision, 'dd/MM HH:mm')}"></span>
+                      <br><span class="text-muted" th:text="${c.decidePar}"></span>
+                    </span>
+                    <span th:if="${c.dateDecision == null}" class="text-muted">—</span>
+                  </td>
+                  <td>
+                    <div class="d-flex gap-1">
+                      <a th:href="@{/clients/{id}(id=${c.clientId})}"
+                         class="btn btn-sm btn-outline-primary py-0 px-2" title="Fiche client">
+                        <i class="fas fa-user"></i>
+                      </a>
+                      <span sec:authorize="hasRole('ROLE_ADMIN')"
+                            th:if="${c.statut?.name() == 'EN_ATTENTE'}">
+                        <button type="button" class="btn btn-sm btn-success py-0 px-2"
+                                th:attr="data-id=${c.id}" onclick="decider(this.dataset.id, 'approuver')">
+                          <i class="fas fa-check"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger py-0 px-2"
+                                th:attr="data-id=${c.id}" onclick="decider(this.dataset.id, 'refuser')">
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                <tr th:if="${primes.empty}">
+                  <td colspan="10" class="text-center text-muted py-5">
+                    <i class="fas fa-check-circle fa-3x text-success mb-2 d-block"></i>
+                    Aucun changement de prime.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Onglet Changements données client ──────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-client">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <small class="text-muted">
+          <i class="fas fa-clock me-1"></i>
+          <span th:if="${!toutVoir}">3 derniers mois</span>
+          <span th:if="${toutVoir}">Tout l'historique</span>
+        </small>
+        <a th:if="${!toutVoir}"
+           th:href="@{/changements(reseau=${reseauFiltre}, toutVoir=true)}"
+           class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-history me-1"></i>Voir tout l'historique
+        </a>
+        <a th:if="${toutVoir}"
+           th:href="@{/changements(reseau=${reseauFiltre})}"
+           class="btn btn-sm btn-outline-primary">
+          <i class="fas fa-compress-alt me-1"></i>3 derniers mois
+        </a>
+      </div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" style="font-size:13px">
+              <thead class="table-light">
+                <tr>
+                  <th>Période</th>
+                  <th>Réseau</th>
+                  <th>N° Client</th>
+                  <th>Nom</th>
+                  <th>Champ modifié</th>
+                  <th>Valeur précédente</th>
+                  <th>Nouvelle valeur</th>
+                  <th>Détecté le</th>
+                  <th>Fiche</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr th:each="c : ${changementsClient}">
+                  <td>
+                    <span class="badge bg-secondary" th:text="${c.mois + '/' + c.annee}"></span>
+                  </td>
+                  <td>
+                    <span class="badge"
+                          th:classappend="${c.reseau?.name() == 'SIB'} ? 'bg-info text-dark' : 'bg-dark'"
+                          th:text="${c.reseau ?: 'BNI'}"></span>
+                  </td>
+                  <td class="fw-semibold" th:text="${c.numeroClient}"></td>
+                  <td th:text="${c.nomClient}"></td>
+                  <td><span class="badge bg-secondary" th:text="${c.champLabel}"></span></td>
+                  <td>
+                    <span th:if="${c.valeurAvant != null}" class="text-danger" th:text="${c.valeurAvant}"></span>
+                    <span th:if="${c.valeurAvant == null}" class="text-muted fst-italic">vide</span>
+                  </td>
+                  <td><span class="text-success fw-semibold" th:text="${c.valeurApres}"></span></td>
+                  <td style="font-size:11px"
+                      th:text="${c.dateDetection != null ? #temporals.format(c.dateDetection,'dd/MM/yyyy HH:mm') : '—'}"></td>
+                  <td>
+                    <a th:href="@{/clients/{id}(id=${c.clientId})}"
+                       class="btn btn-sm btn-outline-primary py-0 px-2" title="Fiche client">
+                      <i class="fas fa-user"></i>
+                    </a>
+                  </td>
+                </tr>
+                <tr th:if="${changementsClient.empty}">
+                  <td colspan="9" class="text-center text-muted py-5">
+                    <i class="fas fa-check-circle fa-3x text-success mb-2 d-block"></i>
+                    Aucun changement de données client.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+
+  <script th:inline="javascript">
+  /*<![CDATA[*/
+  const csrfToken  = document.getElementById('csrf-token').value;
+  const csrfHeader = document.getElementById('csrf-header').value;
+
+  function decider(id, action) {
+    if (!confirm('Voulez-vous ' + (action === 'approuver' ? 'approuver' : 'refuser') + ' ce changement ?')) return;
+    fetch('/changements/prime/' + id + '/' + action, {
+      method: 'POST',
+      headers: { [csrfHeader]: csrfToken }
+    })
+    .then(r => r.json())
+    .then(data => {
+      const badge = document.getElementById('badge-' + id);
+      const dec   = document.getElementById('dec-' + id);
+      const row   = document.getElementById('row-' + id);
+      if (data.statut === 'APPROUVE') {
+        badge.className = 'badge bg-success'; badge.textContent = 'Approuvé';
+      } else {
+        badge.className = 'badge bg-danger'; badge.textContent = 'Refusé';
+      }
+      row.querySelectorAll('button.btn-success, button.btn-danger').forEach(b => b.remove());
+      const now = new Date();
+      dec.innerHTML = '<span>' + String(now.getDate()).padStart(2,'0') + '/' +
+        String(now.getMonth()+1).padStart(2,'0') + ' ' +
+        String(now.getHours()).padStart(2,'0') + ':' +
+        String(now.getMinutes()).padStart(2,'0') + '</span><br><span class="text-muted">Vous</span>';
+    })
+    .catch(() => alert('Erreur lors de la mise à jour.'));
+  }
+
+  function approuverTous() {
+    if (!confirm('Approuver TOUS les changements EN ATTENTE ?')) return;
+    document.querySelectorAll('[id^="row-"]').forEach(row => {
+      const badge = row.querySelector('.badge');
+      if (badge && badge.textContent.trim() === 'En attente') {
+        const id = row.id.replace('row-', '');
+        decider(id, 'approuver');
+      }
+    });
+  }
+
+  function refuserTous() {
+    if (!confirm('Refuser TOUS les changements EN ATTENTE ?')) return;
+    document.querySelectorAll('[id^="row-"]').forEach(row => {
+      const badge = row.querySelector('.badge');
+      if (badge && badge.textContent.trim() === 'En attente') {
+        const id = row.id.replace('row-', '');
+        decider(id, 'refuser');
+      }
+    });
+  }
+  /*]]>*/
+  </script>
+
+</section>
+</body>
+</html>

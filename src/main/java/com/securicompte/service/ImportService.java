@@ -148,13 +148,24 @@ public class ImportService {
             // Tx2 : supprimer l'ancien stock + importer toutes les données (atomique)
             int[] counts = tx.execute(status -> {
                 ImportFichier importFichier = importFichierRepository.findById(importId).orElseThrow();
+
+                // Snapshot des dates d'effet avant suppression pour préserver la plus ancienne lors du réimport
+                Map<Long, java.time.LocalDate> datesOrigines = new java.util.HashMap<>();
                 if (isReimport) {
-                    supprimerDonneesMois(annee, mois, importFichier.getId());
+                    souscriptionRepository.findDatSouscriptionByImportFichierId(importFichier.getId())
+                        .forEach(row -> {
+                            if (row[0] != null && row[1] != null)
+                                datesOrigines.put(((Number) row[0]).longValue(), (java.time.LocalDate) row[1]);
+                        });
+                    if (!datesOrigines.isEmpty())
+                        log.info("Snapshot dates d'effet: {} client(s)", datesOrigines.size());
+                    supprimerDonneesMois(annee, mois, importFichier.getId(), reseau);
                 }
+
                 Map<String, Client> cache = construireClientCache(excelData.stock(), annee, mois, reseau);
                 int[] res = importerStockEtSouscriptionsBulk(
                     excelData.stock(), annee, mois, importFichier, cache,
-                    excelData.numerosNouvelles(), excelData.numerosAnciennes(), reseau, errorDetails);
+                    excelData.numerosNouvelles(), excelData.numerosAnciennes(), reseau, errorDetails, datesOrigines);
                 int ni = impayeDetectionService.detecterImpaYesDuMois(annee, mois, reseau);
                 return new int[]{res[0], res[1], res[2], ni, res[3]};
             });
@@ -327,7 +338,8 @@ public class ImportService {
                                                      Set<String> numerosNouvelles,
                                                      Set<String> numerosAnciennes,
                                                      Reseau reseau,
-                                                     List<String> errorDetails) {
+                                                     List<String> errorDetails,
+                                                     Map<Long, java.time.LocalDate> datesOrigines) {
         List<Long> candidateIds = rows.stream()
             .map(r -> excelParserService.getNumeroClient(r))
             .filter(Objects::nonNull)
@@ -387,6 +399,12 @@ public class ImportService {
                     else nbAnciennes++;
 
                     Souscription s = excelParserService.rowToSouscription(row, client, type, importFichier);
+                    // Règle date d'effet : conserver la date la plus ancienne entre la base et le fichier
+                    java.time.LocalDate dateOrigine = datesOrigines.get(client.getId());
+                    if (dateOrigine != null && s.getDatSouscription() != null
+                            && dateOrigine.isBefore(s.getDatSouscription())) {
+                        s.setDatSouscription(dateOrigine);
+                    }
                     String key = client.getId() + "_" + s.getDatSouscription() + "_" + type;
                     if (!existingKeys.contains(key)) {
                         souscToSave.add(s);
@@ -475,9 +493,9 @@ public class ImportService {
         }
     }
 
-    private void supprimerDonneesMois(Integer annee, Integer mois, Long importFichierId) {
-        impayeRepository.deleteByAnneeAndMois(annee, mois);
-        log.info("Suppression bulk impayés {}/{}", mois, annee);
+    private void supprimerDonneesMois(Integer annee, Integer mois, Long importFichierId, Reseau reseau) {
+        impayeRepository.deleteByAnneeAndMoisAndReseau(annee, mois, reseau);
+        log.info("Suppression bulk impayés {}/{} [{}]", mois, annee, reseau);
         // Suppression par importFichierId = reseau-safe (ne touche pas l'autre réseau du même mois)
         stockMensuelRepository.deleteByImportFichierId(importFichierId);
         log.info("Suppression bulk stock import #{}", importFichierId);
@@ -595,9 +613,10 @@ public class ImportService {
             new TransactionTemplate(transactionManager).execute(status -> {
                 ImportFichier imp = importFichierRepository.findById(importId)
                     .orElseThrow(() -> new IllegalArgumentException("Import introuvable : " + importId));
-                int annee = imp.getAnnee();
-                int mois  = imp.getMois();
-                impayeRepository.deleteByAnneeAndMois(annee, mois);
+                int annee    = imp.getAnnee();
+                int mois     = imp.getMois();
+                Reseau reseau = imp.getReseau();
+                impayeRepository.deleteByAnneeAndMoisAndReseau(annee, mois, reseau);
                 stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
                 souscriptionRepository.deleteByImportFichierId(importId);
                 changementPrimeRepository.deleteByAnneeAndMois(annee, mois);
@@ -763,6 +782,9 @@ public class ImportService {
         };
         return ChangementClientDto.builder()
             .id(c.getId())
+            .annee(c.getAnnee())
+            .mois(c.getMois())
+            .reseau(cl.getReseau())
             .clientId(cl.getId())
             .numeroClient(cl.getNumeroClient())
             .nomClient(cl.getNom())
@@ -774,12 +796,29 @@ public class ImportService {
             .build();
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<ChangementClientDto> getChangementsClientTous() {
+        return changementClientRepository.findAllWithClient()
+            .stream().map(this::toChangementClientDto).collect(Collectors.toList());
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<ChangementClientDto> getChangementsClientRecents() {
+        java.time.LocalDate cutoff = java.time.LocalDate.now().minusMonths(2).withDayOfMonth(1);
+        int minPeriode = cutoff.getYear() * 100 + cutoff.getMonthValue();
+        return changementClientRepository.findRecentWithClient(minPeriode)
+            .stream().map(this::toChangementClientDto).collect(Collectors.toList());
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private ChangementPrimeDto toChangementDto(ChangementPrime c) {
         Client cl = c.getClient();
         return ChangementPrimeDto.builder()
             .id(c.getId())
+            .annee(c.getAnnee())
+            .mois(c.getMois())
+            .reseau(cl.getReseau())
             .clientId(cl.getId())
             .numeroClient(cl.getNumeroClient())
             .nomClient(cl.getNom())

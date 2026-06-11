@@ -15,6 +15,12 @@ public interface ChangementClientRepository extends JpaRepository<ChangementClie
     @Query("SELECT c FROM ChangementClient c JOIN FETCH c.client WHERE c.annee = :annee AND c.mois = :mois ORDER BY c.client.nom, c.champ")
     List<ChangementClient> findByAnneeAndMoisWithClient(@Param("annee") int annee, @Param("mois") int mois);
 
+    @Query("SELECT c FROM ChangementClient c JOIN FETCH c.client ORDER BY c.annee DESC, c.mois DESC, c.client.nom, c.champ")
+    List<ChangementClient> findAllWithClient();
+
+    @Query("SELECT c FROM ChangementClient c JOIN FETCH c.client WHERE (c.annee * 100 + c.mois) >= :minPeriode ORDER BY c.annee DESC, c.mois DESC, c.client.nom, c.champ")
+    List<ChangementClient> findRecentWithClient(@Param("minPeriode") int minPeriode);
+
     long countByAnneeAndMois(int annee, int mois);
 
     @Query("SELECT c.annee, c.mois, COUNT(c) FROM ChangementClient c GROUP BY c.annee, c.mois")
