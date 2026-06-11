@@ -102,9 +102,16 @@
         </li>
         <li class="nav-item">
             <a class="nav-link"
-               th:classappend="${requestURI.startsWith('/changements')} ? 'active'"
+               th:classappend="${requestURI.startsWith('/changements') and !requestURI.startsWith('/changements/clients')} ? 'active'"
                th:href="@{/changements}">
                 <i class="fas fa-bell"></i>Changements en attente
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link"
+               th:classappend="${requestURI.startsWith('/changements/clients')} ? 'active'"
+               th:href="@{/changements/clients}">
+                <i class="fas fa-user-edit"></i>Historique client
             </a>
         </li>
         <li class="nav-section-title">OUTILS</li>

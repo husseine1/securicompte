@@ -1,6 +1,9 @@
 package com.securicompte.repository;
 
 import com.securicompte.entity.ChangementClient;
+import com.securicompte.enums.Reseau;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -20,6 +23,30 @@ public interface ChangementClientRepository extends JpaRepository<ChangementClie
 
     @Query("SELECT c FROM ChangementClient c JOIN FETCH c.client WHERE (c.annee * 100 + c.mois) >= :minPeriode ORDER BY c.annee DESC, c.mois DESC, c.client.nom, c.champ")
     List<ChangementClient> findRecentWithClient(@Param("minPeriode") int minPeriode);
+
+    @Query("""
+        SELECT c FROM ChangementClient c JOIN FETCH c.client cl
+        WHERE (:recherche IS NULL OR LOWER(cl.nom) LIKE :recherche OR LOWER(cl.numeroClient) LIKE :recherche)
+          AND (:annee IS NULL OR c.annee = :annee)
+          AND (:mois IS NULL OR c.mois = :mois)
+          AND (:champ IS NULL OR c.champ = :champ)
+          AND (:reseau IS NULL OR cl.reseau = :reseau)
+        ORDER BY c.annee DESC, c.mois DESC, cl.nom, c.champ
+        """)
+    Page<ChangementClient> searchWithFilters(
+        @Param("recherche") String recherche,
+        @Param("annee") Integer annee,
+        @Param("mois") Integer mois,
+        @Param("champ") String champ,
+        @Param("reseau") Reseau reseau,
+        Pageable pageable
+    );
+
+    @Query("SELECT c FROM ChangementClient c JOIN FETCH c.client WHERE c.client.id = :clientId ORDER BY c.annee DESC, c.mois DESC, c.champ")
+    List<ChangementClient> findByClientId(@Param("clientId") Long clientId);
+
+    @Query("SELECT DISTINCT c.annee FROM ChangementClient c ORDER BY c.annee DESC")
+    List<Integer> findDistinctAnnees();
 
     long countByAnneeAndMois(int annee, int mois);
 
