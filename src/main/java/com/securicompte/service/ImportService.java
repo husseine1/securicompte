@@ -4,7 +4,6 @@ import com.securicompte.dto.ChangementClientDto;
 import com.securicompte.dto.ImportResultDto;
 import com.securicompte.entity.*;
 import com.securicompte.enums.Reseau;
-import com.securicompte.enums.StatutChangement;
 import com.securicompte.enums.StatutImport;
 import com.securicompte.enums.TypeSouscription;
 import com.securicompte.repository.*;
@@ -31,7 +30,6 @@ public class ImportService {
     private final ExcelParserService            excelParserService;
     private final SibParserService              sibParserService;
     private final ImpayeDetectionService        impayeDetectionService;
-    private final NotificationService           notificationService;
     private final ImportFichierRepository       importFichierRepository;
     private final ImportFichierBytesRepository  importFichierBytesRepository;
     private final ClientRepository              clientRepository;
@@ -189,20 +187,6 @@ public class ImportService {
 
 
 
-            // Tx5 : notifier les changements de données client (non bloquant)
-            try {
-                final String username = importePar.getUsername();
-                tx.execute(status -> {
-                    long nb = changementClientRepository.countByAnneeAndMois(annee, mois);
-                    if (nb > 0) {
-                        notificationService.creerNotificationChangementClientImport(annee, mois, nb, username);
-                    }
-                    return null;
-                });
-            } catch (Exception e) {
-                log.warn("Notification changements client non complétée (non bloquant) : {}", e.getMessage());
-            }
-
             ImportFichier saved = importFichierRepository.findById(importId).orElseThrow();
             return ImportResultDto.builder()
                 .importId(importId)
@@ -272,7 +256,6 @@ public class ImportService {
         for (Client client : cache.values()) {
             Map<String, Object> row = premiereLignePar.get(client.getNumeroClient());
             if (row != null && clientAChange(client, row)) {
-                // Enregistrer les changements AVANT mise à jour (pour pouvoir revenir en arrière)
                 changementsACreer.addAll(collecterChangementsClient(client, row, annee, mois, now));
                 updateClientInfos(client, row);
                 aMettrAJour.add(client);
@@ -284,7 +267,7 @@ public class ImportService {
         }
         if (!changementsACreer.isEmpty()) {
             changementClientRepository.saveAll(changementsACreer);
-            log.info("{} changement(s) de données client persistés (EN_ATTENTE)", changementsACreer.size());
+            log.info("{} changement(s) de données client détectés", changementsACreer.size());
         }
 
         // Créer les nouveaux clients en bulk
@@ -442,46 +425,6 @@ public class ImportService {
         if (dateNaissance != null) client.setDateNaissance(dateNaissance);
     }
 
-    private List<ChangementClient> collecterChangementsClient(
-            Client client, Map<String, Object> row, int annee, int mois, LocalDateTime now) {
-        List<ChangementClient> liste = new ArrayList<>();
-        ajouterSiChange(liste, client, annee, mois, now, "nom",
-            client.getNom(), excelParserService.getString(row, "NOM"));
-        ajouterSiChange(liste, client, annee, mois, now, "agenceLib",
-            client.getAgenceLib(), excelParserService.getString(row, "AGENCELIB"));
-        ajouterSiChange(liste, client, annee, mois, now, "gestionnaire",
-            client.getGestionnaire(), excelParserService.getString(row, "GESTIONNAIRE"));
-        ajouterSiChange(liste, client, annee, mois, now, "zoneLib",
-            client.getZoneLib(), excelParserService.getString(row, "ZONELIB"));
-        java.time.LocalDate newDate = excelParserService.getDate(row, "DATNAISSANCE");
-        if (newDate != null && !newDate.equals(client.getDateNaissance())) {
-            liste.add(ChangementClient.builder()
-                .client(client).annee(annee).mois(mois)
-                .champ("dateNaissance")
-                .valeurAvant(client.getDateNaissance() != null ? client.getDateNaissance().toString() : null)
-                .valeurApres(newDate.toString())
-                .statut(com.securicompte.enums.StatutChangement.EN_ATTENTE)
-                .dateDetection(now)
-                .build());
-        }
-        return liste;
-    }
-
-    private void ajouterSiChange(List<ChangementClient> liste, Client client,
-            int annee, int mois, LocalDateTime now,
-            String champ, String ancienne, String nouvelle) {
-        if (nouvelle != null && !nouvelle.equals(ancienne)) {
-            liste.add(ChangementClient.builder()
-                .client(client).annee(annee).mois(mois)
-                .champ(champ)
-                .valeurAvant(ancienne)
-                .valeurApres(nouvelle)
-                .statut(com.securicompte.enums.StatutChangement.EN_ATTENTE)
-                .dateDetection(now)
-                .build());
-        }
-    }
-
     private void supprimerDonneesMois(Integer annee, Integer mois, Long importFichierId, Reseau reseau) {
         impayeRepository.deleteByAnneeAndMoisAndReseau(annee, mois, reseau);
         log.info("Suppression bulk impayés {}/{} [{}]", mois, annee, reseau);
@@ -531,7 +474,6 @@ public class ImportService {
                 impayeRepository.deleteByAnneeAndMoisAndReseau(annee, mois, reseau);
                 stockMensuelRepository.deleteBulkByAnneeAndMois(annee, mois);
                 souscriptionRepository.deleteByImportFichierId(importId);
-                changementClientRepository.deleteByAnneeAndMois(annee, mois);
                 importFichierRepository.deleteDirectById(importId);
                 int orphelins = clientRepository.deleteOrphanClients();
                 log.info("Import {}/{} supprimé (id={}) — {} client(s) orphelin(s) supprimé(s)", mois, annee, importId, orphelins);
@@ -552,14 +494,6 @@ public class ImportService {
 
     public long countImportsEnCours() {
         return importFichierRepository.countByStatut(StatutImport.EN_COURS);
-    }
-
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public java.util.Map<String, Long> getNbChangementsClientParMois() {
-        java.util.Map<String, Long> map = new java.util.HashMap<>();
-        changementClientRepository.countGroupedByMois()
-            .forEach(r -> map.put(r[0] + "-" + r[1], (Long) r[2]));
-        return map;
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -596,39 +530,49 @@ public class ImportService {
         return new java.util.HashSet<>(importFichierBytesRepository.findAllIds());
     }
 
-    // ─── Changements données client ──────────────────────────────────────────
+    // ─── Détection changements données client ────────────────────────────────
 
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public List<ChangementClientDto> getChangementsClient(int annee, int mois) {
-        return changementClientRepository.findByAnneeAndMoisWithClient(annee, mois)
-            .stream().map(this::toChangementClientDto).collect(Collectors.toList());
+    private List<ChangementClient> collecterChangementsClient(
+            Client client, Map<String, Object> row, int annee, int mois, LocalDateTime now) {
+        List<ChangementClient> liste = new ArrayList<>();
+        ajouterSiChange(liste, client, annee, mois, now, "nom",
+            client.getNom(), excelParserService.getString(row, "NOM"));
+        ajouterSiChange(liste, client, annee, mois, now, "agenceLib",
+            client.getAgenceLib(), excelParserService.getString(row, "AGENCELIB"));
+        ajouterSiChange(liste, client, annee, mois, now, "gestionnaire",
+            client.getGestionnaire(), excelParserService.getString(row, "GESTIONNAIRE"));
+        ajouterSiChange(liste, client, annee, mois, now, "zoneLib",
+            client.getZoneLib(), excelParserService.getString(row, "ZONELIB"));
+        java.time.LocalDate newDate = excelParserService.getDate(row, "DATNAISSANCE");
+        if (newDate != null && !newDate.equals(client.getDateNaissance())) {
+            liste.add(ChangementClient.builder()
+                .client(client).annee(annee).mois(mois)
+                .champ("dateNaissance")
+                .valeurAvant(client.getDateNaissance() != null ? client.getDateNaissance().toString() : null)
+                .valeurApres(newDate.toString())
+                .statut(com.securicompte.enums.StatutChangement.EN_ATTENTE)
+                .dateDetection(now)
+                .build());
+        }
+        return liste;
     }
 
-    private ChangementClientDto toChangementClientDto(ChangementClient c) {
-        Client cl = c.getClient();
-        String champLabel = switch (c.getChamp()) {
-            case "nom"           -> "Nom";
-            case "agenceLib"     -> "Agence";
-            case "gestionnaire"  -> "Gestionnaire";
-            case "zoneLib"       -> "Zone";
-            case "dateNaissance" -> "Date de naissance";
-            default              -> c.getChamp();
-        };
-        return ChangementClientDto.builder()
-            .id(c.getId())
-            .annee(c.getAnnee())
-            .mois(c.getMois())
-            .reseau(cl.getReseau())
-            .clientId(cl.getId())
-            .numeroClient(cl.getNumeroClient())
-            .nomClient(cl.getNom())
-            .champ(c.getChamp())
-            .champLabel(champLabel)
-            .valeurAvant(c.getValeurAvant())
-            .valeurApres(c.getValeurApres())
-            .dateDetection(c.getDateDetection())
-            .build();
+    private void ajouterSiChange(List<ChangementClient> liste, Client client,
+            int annee, int mois, LocalDateTime now,
+            String champ, String ancienne, String nouvelle) {
+        if (nouvelle != null && !nouvelle.equals(ancienne)) {
+            liste.add(ChangementClient.builder()
+                .client(client).annee(annee).mois(mois)
+                .champ(champ)
+                .valeurAvant(ancienne)
+                .valeurApres(nouvelle)
+                .statut(com.securicompte.enums.StatutChangement.EN_ATTENTE)
+                .dateDetection(now)
+                .build());
+        }
     }
+
+    // ─── Lecture changements données client ──────────────────────────────────
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<ChangementClientDto> getChangementsClientTous() {
@@ -664,6 +608,32 @@ public class ImportService {
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<Integer> getAnneesChangementsClient() {
         return changementClientRepository.findDistinctAnnees();
+    }
+
+    private ChangementClientDto toChangementClientDto(ChangementClient c) {
+        Client cl = c.getClient();
+        String champLabel = switch (c.getChamp()) {
+            case "nom"           -> "Nom";
+            case "agenceLib"     -> "Agence";
+            case "gestionnaire"  -> "Gestionnaire";
+            case "zoneLib"       -> "Zone";
+            case "dateNaissance" -> "Date de naissance";
+            default              -> c.getChamp();
+        };
+        return ChangementClientDto.builder()
+            .id(c.getId())
+            .annee(c.getAnnee())
+            .mois(c.getMois())
+            .reseau(cl.getReseau())
+            .clientId(cl.getId())
+            .numeroClient(cl.getNumeroClient())
+            .nomClient(cl.getNom())
+            .champ(c.getChamp())
+            .champLabel(champLabel)
+            .valeurAvant(c.getValeurAvant())
+            .valeurApres(c.getValeurApres())
+            .dateDetection(c.getDateDetection())
+            .build();
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

@@ -1,10 +1,7 @@
 package com.securicompte.controller;
 
-import com.securicompte.dto.ChangementClientDto;
-import com.securicompte.dto.ImportResultDto;
 import com.securicompte.dto.StatAgenceDto;
 import com.securicompte.entity.ImportFichier;
-import com.securicompte.entity.ImportFichierBytes;
 import com.securicompte.entity.User;
 import com.securicompte.enums.Reseau;
 import com.securicompte.repository.ImpayeRepository;
@@ -25,7 +22,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 
 @Controller
@@ -46,7 +42,6 @@ public class ImportController {
                              @RequestParam(required = false) Boolean supprime) {
         model.addAttribute("imports", importService.getTousLesImports());
         model.addAttribute("importsAvecFichier", importService.getIdsAvecFichier());
-        model.addAttribute("nbChangementsClient", importService.getNbChangementsClientParMois());
         model.addAttribute("anneeCourante", LocalDate.now().getYear());
         model.addAttribute("moisCourant", LocalDate.now().getMonthValue());
         if (Boolean.TRUE.equals(done))
@@ -230,17 +225,6 @@ public class ImportController {
         importService.supprimerFichierBytes(id);
         ra.addFlashAttribute("succes", "Fichier supprimé de la base de données.");
         return "redirect:/import";
-    }
-
-    // ─── Changements données client ───────────────────────────────────────────
-
-    @GetMapping("/{annee}/{mois}/changements-client")
-    @PreAuthorize("hasAnyRole('ADMIN','AGENT')")
-    public String changementsClient(@PathVariable int annee, @PathVariable int mois, Model model) {
-        model.addAttribute("changements", importService.getChangementsClient(annee, mois));
-        model.addAttribute("annee", annee);
-        model.addAttribute("mois", mois);
-        return "notifications/changements-client";
     }
 
 }

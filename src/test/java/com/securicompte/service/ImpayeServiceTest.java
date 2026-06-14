@@ -19,10 +19,9 @@ import static org.mockito.Mockito.*;
 @DisplayName("ImpayeService - gestion des statuts et statistiques")
 class ImpayeServiceTest {
 
-    @Mock private ImpayeRepository       impayeRepository;
-    @Mock private ClientService          clientService;
-    @Mock private StockMensuelRepository stockMensuelRepository;
-    @Mock private NotificationService    notificationService;
+    @Mock private ImpayeRepository          impayeRepository;
+    @Mock private ClientService             clientService;
+    @Mock private ImportFichierRepository   importFichierRepository;
 
     @InjectMocks
     private ImpayeService impayeService;
@@ -49,8 +48,6 @@ class ImpayeServiceTest {
     void regulariser_impayeExistant_statutRegularise() {
         when(impayeRepository.findById(100L)).thenReturn(Optional.of(impaye));
         when(impayeRepository.save(any())).thenReturn(impaye);
-        when(stockMensuelRepository.findByClientIdAndAnneeAndMois(anyLong(), anyInt(), anyInt()))
-            .thenReturn(Optional.empty());
 
         boolean result = impayeService.regulariser(100L, "Paiement reçu", admin);
 
@@ -59,7 +56,6 @@ class ImpayeServiceTest {
         assertThat(impaye.getCommentaire()).isEqualTo("Paiement reçu");
         assertThat(impaye.getRegularisePar()).isEqualTo(admin);
         assertThat(impaye.getDateRegularisation()).isNotNull();
-        verify(notificationService, never()).creerNotificationChangementPrime(any(), any(), any(), any());
     }
 
     @Test
@@ -71,42 +67,30 @@ class ImpayeServiceTest {
 
         assertThat(result).isFalse();
         verify(impayeRepository, never()).save(any());
-        verifyNoInteractions(notificationService);
     }
 
     @Test
-    @DisplayName("regulariser() - primes identiques → aucune notification créée")
-    void regulariser_primesIdentiques_aucuneNotification() {
+    @DisplayName("regulariser() - commentaire null → accepté, enregistré null")
+    void regulariser_commentaireNull_accepte() {
         when(impayeRepository.findById(100L)).thenReturn(Optional.of(impaye));
         when(impayeRepository.save(any())).thenReturn(impaye);
 
-        StockMensuel stock = StockMensuel.builder().client(client).securicompte("SC-IDENT").build();
-        // Les deux appels retournent des valeurs identiques → pas de changement de prime
-        when(stockMensuelRepository.findByClientIdAndAnneeAndMois(anyLong(), anyInt(), anyInt()))
-            .thenReturn(Optional.of(stock));
+        boolean result = impayeService.regulariser(100L, null, admin);
 
-        impayeService.regulariser(100L, null, admin);
-
-        verify(notificationService, never()).creerNotificationChangementPrime(any(), any(), any(), any());
+        assertThat(result).isTrue();
+        assertThat(impaye.getCommentaire()).isNull();
+        assertThat(impaye.getStatut()).isEqualTo(StatutImpaye.REGULARISE);
     }
 
     @Test
-    @DisplayName("regulariser() - changement de securicompte détecté → notification créée")
-    void regulariser_changementSecuricompte_notificationCreee() {
+    @DisplayName("regulariser() - save() appelé exactement une fois")
+    void regulariser_saveAppeleUneSeuleFois() {
         when(impayeRepository.findById(100L)).thenReturn(Optional.of(impaye));
         when(impayeRepository.save(any())).thenReturn(impaye);
 
-        StockMensuel stockOriginal = StockMensuel.builder().client(client).securicompte("SC-A").build();
-        StockMensuel stockActuel   = StockMensuel.builder().client(client).securicompte("SC-B").build();
-        // 1er appel → stockOriginal (mois de l'impayé), 2e appel → stockActuel (mois courant)
-        when(stockMensuelRepository.findByClientIdAndAnneeAndMois(anyLong(), anyInt(), anyInt()))
-            .thenReturn(Optional.of(stockOriginal))
-            .thenReturn(Optional.of(stockActuel));
-
         impayeService.regulariser(100L, null, admin);
 
-        verify(notificationService).creerNotificationChangementPrime(
-            eq(impaye), any(StockMensuel.class), any(StockMensuel.class), eq("admin"));
+        verify(impayeRepository, times(1)).save(impaye);
     }
 
     // ── marquerImpaye ─────────────────────────────────────────────────────────
@@ -152,11 +136,10 @@ class ImpayeServiceTest {
             new Object[]{"REGULARISE", 1L}
         ));
         when(impayeRepository.countClientsAvecImpayes()).thenReturn(2L);
-        when(impayeRepository.countImpaYesParMois()).thenReturn(List.<Object[]>of());
-        when(impayeRepository.countImpaYesParAgence(null)).thenReturn(List.<Object[]>of());
-        when(impayeRepository.findClientsAvecPlusImpayes(StatutImpaye.IMPAYE)).thenReturn(List.<Object[]>of());
+        when(impayeRepository.findClientsAvecPlusImpayes(StatutImpaye.IMPAYE, null))
+            .thenReturn(List.<Object[]>of());
 
-        DashboardStatsDto stats = impayeService.getDashboardStats();
+        DashboardStatsDto stats = impayeService.getDashboardStats(null);
 
         assertThat(stats.getTotalImpayes()).isEqualTo(3L);
         assertThat(stats.getTotalRegularises()).isEqualTo(1L);
@@ -165,19 +148,16 @@ class ImpayeServiceTest {
     }
 
     @Test
-    @DisplayName("getDashboardStats() - aucun impayé → taux 0% et listes vides")
-    void getDashboardStats_aucunImpaye_tauxZeroEtListesVides() {
+    @DisplayName("getDashboardStats() - aucun impayé → taux 0% et top10 vide")
+    void getDashboardStats_aucunImpaye_tauxZeroEtTop10Vide() {
         when(impayeRepository.countParStatut()).thenReturn(List.<Object[]>of());
         when(impayeRepository.countClientsAvecImpayes()).thenReturn(0L);
-        when(impayeRepository.countImpaYesParMois()).thenReturn(List.<Object[]>of());
-        when(impayeRepository.countImpaYesParAgence(null)).thenReturn(List.<Object[]>of());
-        when(impayeRepository.findClientsAvecPlusImpayes(StatutImpaye.IMPAYE)).thenReturn(List.<Object[]>of());
+        when(impayeRepository.findClientsAvecPlusImpayes(StatutImpaye.IMPAYE, null))
+            .thenReturn(List.<Object[]>of());
 
-        DashboardStatsDto stats = impayeService.getDashboardStats();
+        DashboardStatsDto stats = impayeService.getDashboardStats(null);
 
         assertThat(stats.getTauxRegularisation()).isEqualTo(0.0);
-        assertThat(stats.getStatsParMois()).isEmpty();
-        assertThat(stats.getStatsParAgence()).isEmpty();
         assertThat(stats.getTop10Clients()).isEmpty();
     }
 
@@ -188,11 +168,10 @@ class ImpayeServiceTest {
             new Object[]{"REGULARISE", 5L}
         ));
         when(impayeRepository.countClientsAvecImpayes()).thenReturn(0L);
-        when(impayeRepository.countImpaYesParMois()).thenReturn(List.<Object[]>of());
-        when(impayeRepository.countImpaYesParAgence(null)).thenReturn(List.<Object[]>of());
-        when(impayeRepository.findClientsAvecPlusImpayes(StatutImpaye.IMPAYE)).thenReturn(List.<Object[]>of());
+        when(impayeRepository.findClientsAvecPlusImpayes(StatutImpaye.IMPAYE, null))
+            .thenReturn(List.<Object[]>of());
 
-        DashboardStatsDto stats = impayeService.getDashboardStats();
+        DashboardStatsDto stats = impayeService.getDashboardStats(null);
 
         assertThat(stats.getTotalImpayes()).isEqualTo(0L);
         assertThat(stats.getTotalRegularises()).isEqualTo(5L);

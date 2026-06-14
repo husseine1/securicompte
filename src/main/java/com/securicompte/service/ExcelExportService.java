@@ -80,8 +80,6 @@ public class ExcelExportService {
             CellStyle headerStyle = createHeaderStyle(workbook);
             CellStyle impayeStyle = createImpayeStyle(workbook);
             CellStyle regulariseStyle = createRegulariseStyle(workbook);
-            CellStyle dateStyle = createDateStyle(workbook);
-
             // Entêtes
             String[] headers = {
                 "N°", "Numéro Client", "Nom Client", "Agence", "Gestionnaire",
@@ -138,7 +136,6 @@ public class ExcelExportService {
 
     private void addSummarySheet(Workbook workbook, List<ImpayeDto> impayes) {
         Sheet sheet = workbook.createSheet("Résumé");
-        CellStyle headerStyle = createHeaderStyle(workbook);
 
         Row titleRow = sheet.createRow(0);
         Cell titleCell = titleRow.createCell(0);
@@ -236,10 +233,4 @@ public class ExcelExportService {
         return style;
     }
 
-    private CellStyle createDateStyle(Workbook workbook) {
-        CellStyle style = workbook.createCellStyle();
-        CreationHelper helper = workbook.getCreationHelper();
-        style.setDataFormat(helper.createDataFormat().getFormat("dd/mm/yyyy"));
-        return style;
-    }
 }

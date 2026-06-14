@@ -1,6 +1,5 @@
 package com.securicompte.service;
 
-import com.securicompte.dto.ChangementPrimeDto;
 import com.securicompte.entity.*;
 import com.securicompte.enums.StatutImport;
 import com.securicompte.repository.*;
@@ -13,22 +12,23 @@ import org.springframework.transaction.PlatformTransactionManager;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ImportService - gestion des imports et changements de prime")
+@DisplayName("ImportService - gestion des imports")
 class ImportServiceTest {
 
-    @Mock private ExcelParserService      excelParserService;
-    @Mock private ImpayeDetectionService  impayeDetectionService;
-    @Mock private NotificationService     notificationService;
-    @Mock private ImportFichierRepository importFichierRepository;
-    @Mock private ClientRepository        clientRepository;
-    @Mock private SouscriptionRepository  souscriptionRepository;
-    @Mock private StockMensuelRepository  stockMensuelRepository;
-    @Mock private ImpayeRepository        impayeRepository;
-    @Mock private PlatformTransactionManager transactionManager;
+    @Mock private ExcelParserService            excelParserService;
+    @Mock private SibParserService              sibParserService;
+    @Mock private ImpayeDetectionService        impayeDetectionService;
+    @Mock private NotificationService           notificationService;
+    @Mock private ImportFichierRepository       importFichierRepository;
+    @Mock private ImportFichierBytesRepository  importFichierBytesRepository;
+    @Mock private ClientRepository              clientRepository;
+    @Mock private SouscriptionRepository        souscriptionRepository;
+    @Mock private StockMensuelRepository        stockMensuelRepository;
+    @Mock private ImpayeRepository              impayeRepository;
+    @Mock private PlatformTransactionManager    transactionManager;
 
     @InjectMocks
     private ImportService importService;
@@ -90,67 +90,6 @@ class ImportServiceTest {
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getId()).isEqualTo(1L);
-    }
-
-    // ── getChangementsPrime ───────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("getChangementsPrime() - aucun stock pour le mois → liste vide immédiatement")
-    void getChangementsPrime_stockVide_retourneListeVide() {
-        when(stockMensuelRepository.findByAnneeAndMoisWithClient(2024, 3)).thenReturn(List.of());
-
-        List<ChangementPrimeDto> result = importService.getChangementsPrime(2024, 3);
-
-        assertThat(result).isEmpty();
-        verifyNoInteractions(souscriptionRepository);
-    }
-
-    @Test
-    @DisplayName("getChangementsPrime() - primes identiques → aucun changement retourné")
-    void getChangementsPrime_primesIdentiques_listeVide() {
-        Client client = Client.builder().id(1L).numeroClient("C001").nom("Alice").build();
-        StockMensuel stock = StockMensuel.builder()
-            .client(client).annee(2024).mois(3).securicompte("SC-X").build();
-
-        Souscription souscription = Souscription.builder()
-            .client(client).securicompte("SC-X").build();
-
-        when(stockMensuelRepository.findByAnneeAndMoisWithClient(2024, 3))
-            .thenReturn(List.of(stock));
-        when(souscriptionRepository.findAllByClientIdsOrderByDateDesc(List.of(1L)))
-            .thenReturn(List.of(souscription));
-
-        List<ChangementPrimeDto> result = importService.getChangementsPrime(2024, 3);
-
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    @DisplayName("getChangementsPrime() - prime modifiée → changement détecté dans le résultat")
-    void getChangementsPrime_primeModifiee_changementDetecte() {
-        Client client = Client.builder()
-            .id(1L).numeroClient("C001").nom("Alice").agenceLib("Paris").build();
-
-        StockMensuel stock = StockMensuel.builder()
-            .client(client).annee(2024).mois(3)
-            .securicompte("SC-NOUVEAU").build();
-
-        Souscription souscription = Souscription.builder()
-            .client(client).securicompte("SC-ANCIEN")
-            .datSouscription(java.time.LocalDate.of(2023, 6, 1))
-            .build();
-
-        when(stockMensuelRepository.findByAnneeAndMoisWithClient(2024, 3))
-            .thenReturn(List.of(stock));
-        when(souscriptionRepository.findAllByClientIdsOrderByDateDesc(List.of(1L)))
-            .thenReturn(List.of(souscription));
-
-        List<ChangementPrimeDto> result = importService.getChangementsPrime(2024, 3);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getNumeroClient()).isEqualTo("C001");
-        assertThat(result.get(0).getSecuricompteAvant()).isEqualTo("SC-ANCIEN");
-        assertThat(result.get(0).getSecuricompteApres()).isEqualTo("SC-NOUVEAU");
     }
 
     // ── getImportsByAnnee ─────────────────────────────────────────────────────

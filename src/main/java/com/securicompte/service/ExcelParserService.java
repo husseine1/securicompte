@@ -20,7 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.*;
 import java.util.Locale;
 
@@ -193,9 +192,6 @@ public class ExcelParserService {
             this.allowNomFallback = allowNomFallback;
             this.stopOnClientWithoutNom = stopOnClientWithoutNom;
         }
-        XlsbRowCollector(boolean allowNomFallback) { this(allowNomFallback, false); }
-        XlsbRowCollector() { this(false, false); }
-
         @Override
         public void startRow(int rowNum) {
             if (done) return;

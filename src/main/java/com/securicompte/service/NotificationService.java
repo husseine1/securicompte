@@ -17,23 +17,6 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
 
-    @Transactional
-    public void creerNotificationChangementClientImport(int annee, int mois, long nbChangements, String importePar) {
-        String message = String.format(
-                "Import %s %d : %d modification(s) de données client détectée(s).",
-                getMoisNom(mois), annee, nbChangements
-        );
-        Notification notif = Notification.builder()
-                .type("CHANGEMENT_CLIENT_IMPORT")
-                .message(message)
-                .anneeImpaye(annee)
-                .moisImpaye(mois)
-                .creePar(importePar)
-                .build();
-        notificationRepository.save(notif);
-        log.info("Notification créée : {} modification(s) de données client pour {}/{}", nbChangements, mois, annee);
-    }
-
     @Transactional(readOnly = true)
     public List<Notification> getNonLues() {
         return notificationRepository.findByLuFalseOrderByCreatedAtDesc();
@@ -72,14 +55,4 @@ public class NotificationService {
         notificationRepository.saveAll(nonLues);
     }
 
-    private String getMoisNom(Integer mois) {
-        if (mois == null || mois < 1 || mois > 12) return "";
-        String[] noms = {"", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-                "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"};
-        return noms[mois];
-    }
-
-    private String nvl(String s) {
-        return s != null ? s : "N/A";
-    }
 }

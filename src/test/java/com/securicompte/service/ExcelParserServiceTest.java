@@ -1,6 +1,7 @@
 package com.securicompte.service;
 
 import com.securicompte.entity.*;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.TypeSouscription;
 import org.junit.jupiter.api.*;
 
@@ -69,14 +70,13 @@ class ExcelParserServiceTest {
     }
 
     @Test
-    @DisplayName("getNumeroClient() - compte bancaire (>7 chiffres) → extraction de la partie centrale")
-    void getNumeroClient_compteBancaireLong_extraitPartiecentrale() {
-        // Format : 0 + numeroClient(6) + clé(4) = 11 chars
-        // "02117730005" → substring(1, 11-4) = substring(1, 7) = "211773"
+    @DisplayName("getNumeroClient() - colonne CLIENT → valeur retournée telle quelle, même si format compte bancaire")
+    void getNumeroClient_colonneClient_retourneValeurBrute() {
+        // CLIENT est toujours retourné sans transformation ; l'extraction ne s'applique qu'à COMPTE
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("CLIENT", "02117730005");
 
-        assertThat(parser.getNumeroClient(row)).isEqualTo("211773");
+        assertThat(parser.getNumeroClient(row)).isEqualTo("02117730005");
     }
 
     @Test
@@ -118,7 +118,7 @@ class ExcelParserServiceTest {
         row.put("ZONELIB",     "Zone Nord");
         row.put("COMPTE",      "02117730005");
 
-        Client client = parser.rowToClient(row);
+        Client client = parser.rowToClient(row, Reseau.BNI);
 
         assertThat(client.getNumeroClient()).isEqualTo("C001");
         assertThat(client.getNom()).isEqualTo("Dupont Jean");
@@ -134,7 +134,7 @@ class ExcelParserServiceTest {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("CLIENT", "C002");
 
-        Client client = parser.rowToClient(row);
+        Client client = parser.rowToClient(row, Reseau.BNI);
 
         assertThat(client.getNumeroClient()).isEqualTo("C002");
         assertThat(client.getNom()).isNull();

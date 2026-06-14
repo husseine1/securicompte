@@ -5,7 +5,6 @@ import com.securicompte.entity.Impaye;
 import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.repository.ImpayeRepository;
-import com.securicompte.repository.ImportFichierRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,7 +24,6 @@ public class ImpayeService {
 
     private final ImpayeRepository       impayeRepository;
     private final ClientService          clientService;
-    private final ImportFichierRepository importFichierRepository;
 
     @Transactional(readOnly = true)
     public Page<ImpayeDto> getImpaYesWithFilters(FiltreImpayeDto filtre) {
@@ -117,13 +115,4 @@ public class ImpayeService {
         return impayeRepository.findDistinctAnnees();
     }
 
-    private static final String[] MOIS_NOMS = {
-        "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-        "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
-    };
-
-    private String getMoisNom(Integer mois) {
-        if (mois != null && mois >= 1 && mois <= 12) return MOIS_NOMS[mois];
-        return "";
-    }
 }

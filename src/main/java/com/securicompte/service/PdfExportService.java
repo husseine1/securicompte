@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @Slf4j
@@ -25,7 +24,6 @@ public class PdfExportService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final Color SC_PRIMARY = new Color(26, 58, 92);
-    private static final Color SC_ACCENT  = new Color(232, 184, 0);
     private static final Color ROW_ALT    = new Color(240, 244, 248);
 
     public byte[] exporterImpayes(List<ImpayeDto> impayes) throws IOException {

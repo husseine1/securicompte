@@ -2,6 +2,7 @@ package com.securicompte.service;
 
 import com.securicompte.entity.Client;
 import com.securicompte.entity.Impaye;
+import com.securicompte.enums.Reseau;
 import com.securicompte.enums.StatutImpaye;
 import com.securicompte.repository.ClientRepository;
 import com.securicompte.repository.ImpayeRepository;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,6 +37,11 @@ class ImpayeDetectionServiceTest {
     @InjectMocks
     private ImpayeDetectionService service;
 
+    @Captor
+    private ArgumentCaptor<List<Impaye>> impayeCaptor;
+
+    private static final Reseau RESEAU = Reseau.BNI;
+
     private Client clientA;
     private Client clientB;
 
@@ -47,30 +54,24 @@ class ImpayeDetectionServiceTest {
     @Test
     @DisplayName("Client absent du stock → impayé créé")
     void clientAbsentDuStock_doitCreerImpaye() {
-        // Seul clientA a souscrit
-        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any()))
+        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L));
-        // Aucun sinistre
-        when(clientRepository.findClientIdsWithSinistreInOrBefore(any()))
+        when(clientRepository.findClientIdsWithSinistreInOrBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of());
-        // clientA absent du stock (non payé)
-        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3))
+        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3, RESEAU))
             .thenReturn(List.of());
-        // Pas d'impayé déjà existant
         when(impayeRepository.findClientIdsWithImpayeForMois(2024, 3))
             .thenReturn(List.of());
-        // Chargement du client
         when(clientRepository.findAllById(List.of(1L)))
             .thenReturn(List.of(clientA));
         when(impayeRepository.saveAll(any())).thenReturn(List.of());
 
-        int nb = service.detecterImpaYesDuMois(2024, 3);
+        int nb = service.detecterImpaYesDuMois(2024, 3, RESEAU);
 
         assertThat(nb).isEqualTo(1);
 
-        ArgumentCaptor<List<Impaye>> captor = ArgumentCaptor.forClass(List.class);
-        verify(impayeRepository).saveAll(captor.capture());
-        List<Impaye> impayes = captor.getValue();
+        verify(impayeRepository).saveAll(impayeCaptor.capture());
+        List<Impaye> impayes = impayeCaptor.getValue();
         assertThat(impayes).hasSize(1);
         assertThat(impayes.get(0).getClient()).isEqualTo(clientA);
         assertThat(impayes.get(0).getStatut()).isEqualTo(StatutImpaye.IMPAYE);
@@ -81,17 +82,16 @@ class ImpayeDetectionServiceTest {
     @Test
     @DisplayName("Client présent dans le stock → aucun impayé créé")
     void clientPresentDansStock_neCreeRien() {
-        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any()))
+        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L));
-        when(clientRepository.findClientIdsWithSinistreInOrBefore(any()))
+        when(clientRepository.findClientIdsWithSinistreInOrBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of());
-        // clientA est PAYÉ (présent dans le stock)
-        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3))
+        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3, RESEAU))
             .thenReturn(List.of(1L));
         when(impayeRepository.findClientIdsWithImpayeForMois(2024, 3))
             .thenReturn(List.of());
 
-        int nb = service.detecterImpaYesDuMois(2024, 3);
+        int nb = service.detecterImpaYesDuMois(2024, 3, RESEAU);
 
         assertThat(nb).isEqualTo(0);
         verify(impayeRepository, never()).saveAll(any());
@@ -100,13 +100,11 @@ class ImpayeDetectionServiceTest {
     @Test
     @DisplayName("Client avec sinistre → exclu de la détection")
     void clientAvecSinistre_estExclu() {
-        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any()))
+        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L, 2L));
-        // clientA a un sinistre
-        when(clientRepository.findClientIdsWithSinistreInOrBefore(any()))
+        when(clientRepository.findClientIdsWithSinistreInOrBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L));
-        // Ni l'un ni l'autre dans le stock
-        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3))
+        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3, RESEAU))
             .thenReturn(List.of());
         when(impayeRepository.findClientIdsWithImpayeForMois(2024, 3))
             .thenReturn(List.of());
@@ -114,29 +112,26 @@ class ImpayeDetectionServiceTest {
             .thenReturn(List.of(clientB));
         when(impayeRepository.saveAll(any())).thenReturn(List.of());
 
-        int nb = service.detecterImpaYesDuMois(2024, 3);
+        int nb = service.detecterImpaYesDuMois(2024, 3, RESEAU);
 
-        // Seul clientB (sans sinistre) doit avoir un impayé
         assertThat(nb).isEqualTo(1);
-        ArgumentCaptor<List<Impaye>> captor = ArgumentCaptor.forClass(List.class);
-        verify(impayeRepository).saveAll(captor.capture());
-        assertThat(captor.getValue().get(0).getClient()).isEqualTo(clientB);
+        verify(impayeRepository).saveAll(impayeCaptor.capture());
+        assertThat(impayeCaptor.getValue().get(0).getClient()).isEqualTo(clientB);
     }
 
     @Test
     @DisplayName("Impayé déjà existant → pas de doublon")
     void impayeDejaExistant_neCreeDoublon() {
-        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any()))
+        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L));
-        when(clientRepository.findClientIdsWithSinistreInOrBefore(any()))
+        when(clientRepository.findClientIdsWithSinistreInOrBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of());
-        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3))
+        when(stockMensuelRepository.findClientIdsPresentsDansMois(2024, 3, RESEAU))
             .thenReturn(List.of());
-        // Impayé déjà enregistré pour clientA
         when(impayeRepository.findClientIdsWithImpayeForMois(2024, 3))
             .thenReturn(List.of(1L));
 
-        int nb = service.detecterImpaYesDuMois(2024, 3);
+        int nb = service.detecterImpaYesDuMois(2024, 3, RESEAU);
 
         assertThat(nb).isEqualTo(0);
         verify(impayeRepository, never()).saveAll(any());
@@ -145,10 +140,10 @@ class ImpayeDetectionServiceTest {
     @Test
     @DisplayName("Aucune souscription → retourne 0 immédiatement")
     void aucuneSouscription_retourneZero() {
-        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any()))
+        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of());
 
-        int nb = service.detecterImpaYesDuMois(2024, 3);
+        int nb = service.detecterImpaYesDuMois(2024, 3, RESEAU);
 
         assertThat(nb).isEqualTo(0);
         verifyNoInteractions(stockMensuelRepository, impayeRepository);
@@ -158,13 +153,12 @@ class ImpayeDetectionServiceTest {
     @Test
     @DisplayName("Tous les clients avec sinistre → retourne 0 après exclusion")
     void tousAvecSinistre_retourneZero() {
-        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any()))
+        when(souscriptionRepository.findClientIdsWithSouscriptionBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L, 2L));
-        // Tous en sinistre
-        when(clientRepository.findClientIdsWithSinistreInOrBefore(any()))
+        when(clientRepository.findClientIdsWithSinistreInOrBefore(any(LocalDate.class), any(Reseau.class)))
             .thenReturn(List.of(1L, 2L));
 
-        int nb = service.detecterImpaYesDuMois(2024, 3);
+        int nb = service.detecterImpaYesDuMois(2024, 3, RESEAU);
 
         assertThat(nb).isEqualTo(0);
         verifyNoInteractions(stockMensuelRepository);
